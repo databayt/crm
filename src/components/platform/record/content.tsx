@@ -1,11 +1,14 @@
 import { notFound } from "next/navigation"
 
+import { db } from "@/lib/db"
 import { getObjectByPlural } from "@/lib/metadata"
 import { countRecords, listRecords } from "@/lib/query-builder"
 import { getRelationOptions, resolveRelationLabels } from "@/lib/record-data"
 import { requireTenant } from "@/lib/tenant-context"
 import { RecordForm } from "@/components/platform/record/record-form"
 import { RecordTable } from "@/components/platform/record/record-table"
+import { RecordToolbar } from "@/components/platform/record/record-toolbar"
+import type { ViewConfig } from "@/components/platform/record/view-actions"
 
 const PAGE_SIZE = 25
 
@@ -45,6 +48,12 @@ export async function RecordContent({
     resolveRelationLabels(workspaceId, pgSchema, object, rows),
   ])
 
+  const views = await db.view.findMany({
+    where: { workspaceId, objectId: object.id },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, name: true, config: true },
+  })
+
   const tableFields = object.fields.map((f) => ({
     name: f.name,
     label: f.label,
@@ -64,6 +73,17 @@ export async function RecordContent({
           objectLabel={object.labelSingular}
           fields={object.fields}
           relationOptions={relationOptions}
+        />
+      </div>
+      <div className="mb-4">
+        <RecordToolbar
+          objectName={object.nameSingular}
+          views={views.map((v) => ({
+            id: v.id,
+            name: v.name,
+            config: (v.config ?? {}) as unknown as ViewConfig,
+          }))}
+          fields={object.fields.map((f) => ({ name: f.name, label: f.label }))}
         />
       </div>
       <RecordTable

@@ -1,0 +1,39 @@
+"use server"
+
+import { Prisma } from "@prisma/client"
+
+import { db } from "@/lib/db"
+import { getObject } from "@/lib/metadata"
+import { requireTenant } from "@/lib/tenant-context"
+
+export type ViewConfig = { search?: string; sort?: string; dir?: string }
+export type ViewResult = { error?: string; ok?: boolean }
+
+export async function saveView(
+  objectName: string,
+  name: string,
+  config: ViewConfig,
+): Promise<ViewResult> {
+  const { workspaceId } = await requireTenant()
+  if (!name.trim()) return { error: "Name is required" }
+
+  const object = await getObject(workspaceId, objectName)
+  if (!object) return { error: "Unknown object" }
+
+  await db.view.create({
+    data: {
+      workspaceId,
+      objectId: object.id,
+      name: name.trim(),
+      viewType: "table",
+      config: config as Prisma.InputJsonValue,
+    },
+  })
+  return { ok: true }
+}
+
+export async function deleteView(viewId: string): Promise<ViewResult> {
+  const { workspaceId } = await requireTenant()
+  await db.view.deleteMany({ where: { id: viewId, workspaceId } })
+  return { ok: true }
+}
