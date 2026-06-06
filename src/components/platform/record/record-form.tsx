@@ -2,15 +2,10 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { type Resolver, useForm } from "react-hook-form"
+import { useForm } from "react-hook-form"
 import { toast } from "sonner"
 
-import {
-  buildRecordSchema,
-  type RecordFormValues,
-  toFormValues,
-} from "@/lib/record-schema"
+import { type RecordFormValues, toFormValues } from "@/lib/record-schema"
 import {
   createRecord,
   updateRecord,
@@ -55,15 +50,22 @@ export function RecordForm({
     register,
     handleSubmit,
     reset,
+    setError,
     formState: { errors },
   } = useForm<RecordFormValues>({
-    resolver: zodResolver(
-      buildRecordSchema(fields),
-    ) as Resolver<RecordFormValues>,
     defaultValues: toFormValues(fields, record),
   })
 
   const onSubmit = (values: RecordFormValues) => {
+    // Client-side required check (the server action re-validates). Schema-level
+    // validation is intentionally server-side since fields are dynamic.
+    const missing = fields.find(
+      (f) => f.isNullable === false && !String(values[f.name] ?? "").trim(),
+    )
+    if (missing) {
+      setError(missing.name, { message: `${missing.label} is required` })
+      return
+    }
     start(async () => {
       const res = editing
         ? await updateRecord(objectName, String(record?.id), values)
@@ -113,7 +115,11 @@ export function RecordForm({
             </div>
           ))}
           <DialogFooter>
-            <Button type="submit" disabled={pending}>
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={handleSubmit(onSubmit)}
+            >
               {pending ? "Saving…" : editing ? "Save" : "Create"}
             </Button>
           </DialogFooter>

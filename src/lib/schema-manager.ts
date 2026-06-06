@@ -1,6 +1,6 @@
 import "server-only"
 
-import { pgPool, quoteIdent } from "@/lib/db-data"
+import { pgPool, qualified, quoteIdent } from "@/lib/db-data"
 import {
   buildAddColumn,
   buildCreateTable,
@@ -62,4 +62,13 @@ export async function dropColumn(
   columnName: string,
 ): Promise<void> {
   await pgPool.query(buildDropColumn(pgSchema, table, columnName))
+}
+
+export async function dropObjectTable(
+  pgSchema: string,
+  table: string,
+): Promise<void> {
+  await pgPool.query(
+    `DROP TABLE IF EXISTS ${qualified(pgSchema, table)} CASCADE`,
+  )
 }

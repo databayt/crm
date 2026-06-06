@@ -9,6 +9,7 @@ export interface LoadedField {
   label: string
   type: string
   isNullable: boolean
+  isCustom: boolean
   options: unknown
   position: number
 }
