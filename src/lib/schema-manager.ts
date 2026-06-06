@@ -1,10 +1,18 @@
 import "server-only"
 
 import { pgPool, quoteIdent } from "@/lib/db-data"
+import {
+  buildAddColumn,
+  buildCreateTable,
+  buildDropColumn,
+  type FieldColumn,
+} from "@/lib/ddl"
 
-// The metadata engine's DDL layer. Phase 1 provisions an empty per-workspace
-// schema at /join; Phase 2 adds materializeObject()/addField() to create the
-// actual record tables from FieldMetadata.
+export { SYSTEM_COLUMNS, type FieldColumn } from "@/lib/ddl"
+
+// The metadata engine's DDL execution layer. Pure statement construction lives
+// in src/lib/ddl.ts (unit-tested); this file just runs the statements against
+// the data-plane pool.
 
 // Derive a safe Postgres schema name from the (unique) workspace subdomain.
 // Subdomains are [a-z0-9-]; hyphens → underscores; the "ws_" prefix guarantees a
@@ -30,4 +38,28 @@ export async function workspaceSchemaExists(
     [pgSchema],
   )
   return rows[0]?.exists ?? false
+}
+
+export async function materializeObject(
+  pgSchema: string,
+  table: string,
+  fields: FieldColumn[],
+): Promise<void> {
+  await pgPool.query(buildCreateTable(pgSchema, table, fields))
+}
+
+export async function addColumn(
+  pgSchema: string,
+  table: string,
+  field: FieldColumn,
+): Promise<void> {
+  await pgPool.query(buildAddColumn(pgSchema, table, field))
+}
+
+export async function dropColumn(
+  pgSchema: string,
+  table: string,
+  columnName: string,
+): Promise<void> {
+  await pgPool.query(buildDropColumn(pgSchema, table, columnName))
 }

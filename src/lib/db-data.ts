@@ -20,19 +20,6 @@ export const pgPool =
 
 if (process.env.NODE_ENV !== "production") globalForPg.pgPool = pgPool
 
-// SQL identifiers (schema/table/column names) cannot be parameterized, so the
-// metadata engine must build them by hand. We whitelist the charset and
-// double-quote to defeat injection. Identifier names always originate from
-// validated metadata, never from raw user input.
-const IDENT_RE = /^[a-z_][a-z0-9_]*$/i
-
-export function quoteIdent(name: string): string {
-  if (!IDENT_RE.test(name) || name.length > 63) {
-    throw new Error(`Unsafe SQL identifier: ${JSON.stringify(name)}`)
-  }
-  return `"${name.replace(/"/g, '""')}"`
-}
-
-export function qualified(schema: string, table: string): string {
-  return `${quoteIdent(schema)}.${quoteIdent(table)}`
-}
+// Re-export the pure identifier helpers so server-only callers can import both
+// the pool and the quoting helpers from one place.
+export { quoteIdent, qualified } from "@/lib/sql"

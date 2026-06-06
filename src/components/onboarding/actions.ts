@@ -5,8 +5,10 @@ import { Prisma } from "@prisma/client"
 
 import { auth } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { seedWorkspaceObjects } from "@/lib/provisioning"
 import {
   createWorkspaceSchema,
+  dropWorkspaceSchema,
   workspaceSchemaName,
 } from "@/lib/schema-manager"
 import { invalidateWorkspaceCache } from "@/lib/tenant-context"
@@ -39,11 +41,10 @@ export async function createWorkspace(
 
   const pgSchema = workspaceSchemaName(subdomain)
 
+  // 1. Control-plane writes (transactional): Workspace + OWNER Member.
+  let workspaceId: string
   try {
-    // Control-plane writes first (transactional); then provision the data-plane
-    // schema. If the DDL fails, undo the workspace so we never leave a dangling
-    // control-plane row pointing at a missing schema.
-    await db.$transaction(async (tx) => {
+    workspaceId = await db.$transaction(async (tx) => {
       const ws = await tx.workspace.create({
         data: {
           name,
@@ -56,6 +57,7 @@ export async function createWorkspace(
       await tx.member.create({
         data: { userId, workspaceId: ws.id, role: "OWNER" },
       })
+      return ws.id
     })
   } catch (error) {
     if (
@@ -72,12 +74,17 @@ export async function createWorkspace(
     return { error: "Could not create workspace" }
   }
 
+  // 2. Data-plane provisioning: create the schema + materialize standard objects.
+  //    On any failure, undo everything so we never leave a half-built tenant.
   try {
     await createWorkspaceSchema(pgSchema)
+    await seedWorkspaceObjects(workspaceId, pgSchema)
   } catch (error) {
-    console.error("[createWorkspace] schema provisioning failed", error)
-    await db.workspace.delete({ where: { subdomain } }).catch(() => {})
-    return { error: "Could not provision workspace storage" }
+    console.error("[createWorkspace] provisioning failed — rolling back", error)
+    await dropWorkspaceSchema(pgSchema).catch(() => {})
+    // Cascade deletes Member + ObjectMetadata + FieldMetadata.
+    await db.workspace.delete({ where: { id: workspaceId } }).catch(() => {})
+    return { error: "Could not provision workspace" }
   }
 
   invalidateWorkspaceCache(subdomain)
