@@ -46,6 +46,9 @@ export function PlatformShell({
               {nav[o.namePlural] ?? o.labelPlural}
             </Link>
           ))}
+          <Link href={`/${lang}/pipeline`} className={linkClass}>
+            {nav.pipeline ?? "Pipeline"}
+          </Link>
         </nav>
         <form action={logout} className="mt-auto">
           <Button

@@ -5,6 +5,7 @@ import { getObjectByPlural } from "@/lib/metadata"
 import { getRecord } from "@/lib/query-builder"
 import { getRelationOptions, resolveRelationLabels } from "@/lib/record-data"
 import { requireTenant } from "@/lib/tenant-context"
+import { ActivityTimeline } from "@/components/platform/record/activity-timeline"
 import { FieldCell } from "@/components/platform/record/field-cell"
 import { RecordForm } from "@/components/platform/record/record-form"
 import { Button } from "@/components/ui/button"
@@ -77,12 +78,10 @@ export async function RecordDetail({
             </div>
           ))}
         </dl>
-        <aside className="h-fit rounded-lg border p-4">
-          <h2 className="text-sm font-medium">Activity</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Timeline arrives in Phase 4.
-          </p>
-        </aside>
+        <ActivityTimeline
+          objectName={object.nameSingular}
+          recordId={recordId}
+        />
       </div>
     </div>
   )

@@ -23,6 +23,9 @@ export interface ListOptions {
   offset?: number
   orderBy?: { column: string; dir: "asc" | "desc" }
   search?: string
+  // Equality filters, e.g. activity.company_id = <id>. Columns are allowlisted
+  // against the field map (+ system columns); values are coerced + parameterized.
+  filters?: { column: string; value: unknown }[]
 }
 
 const MAX_LIMIT = 200
@@ -104,6 +107,16 @@ export function buildList(
 
   const where = ['"deleted_at" IS NULL']
   const values: unknown[] = []
+
+  const allowed = orderableColumns(fields)
+  for (const f of opts.filters ?? []) {
+    if (!allowed.has(f.column)) continue
+    const v =
+      f.column in fields ? coerceValue(fields[f.column], f.value) : f.value
+    values.push(v)
+    where.push(`${quoteIdent(f.column)} = $${values.length}`)
+  }
+
   const search = searchClause(fields, opts.search, values)
   if (search) where.push(search)
 

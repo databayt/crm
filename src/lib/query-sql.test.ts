@@ -38,6 +38,19 @@ describe("query-sql builders", () => {
     expect(q.values).toEqual([200, 0]) // clamped to MAX_LIMIT
   })
 
+  it("applies allowlisted equality filters before limit/offset", () => {
+    const fm: FieldMap = { ...FM, company_id: "RELATION" }
+    const q = buildList("ws_acme", "activity", fm, {
+      filters: [
+        { column: "company_id", value: "abc" },
+        { column: "evil; DROP", value: "x" }, // ignored (not allowlisted)
+      ],
+    })
+    expect(q.text).toContain('WHERE "deleted_at" IS NULL AND "company_id" = $1')
+    expect(q.text).toContain("LIMIT $2 OFFSET $3")
+    expect(q.values).toEqual(["abc", 50, 0])
+  })
+
   it("only orders by allowlisted columns", () => {
     const ok = buildList("ws_acme", "company", FM, {
       orderBy: { column: "city", dir: "asc" },
