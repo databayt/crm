@@ -22,12 +22,38 @@ export interface ListOptions {
   limit?: number
   offset?: number
   orderBy?: { column: string; dir: "asc" | "desc" }
+  search?: string
 }
 
 const MAX_LIMIT = 200
 
+// Field types whose columns participate in free-text search (ILIKE).
+const SEARCHABLE_TYPES = new Set(["TEXT", "EMAIL", "URL", "PHONE", "SELECT"])
+
 function orderableColumns(fields: FieldMap): Set<string> {
   return new Set<string>([...SYSTEM_COLUMNS, ...Object.keys(fields)])
+}
+
+function searchableColumns(fields: FieldMap): string[] {
+  return Object.entries(fields)
+    .filter(([, type]) => SEARCHABLE_TYPES.has(type))
+    .map(([name]) => name)
+}
+
+// Build the "(col ILIKE $n OR ...)" clause for a search term, appending its
+// parameter to `values`. Returns "" when there's nothing to search.
+function searchClause(
+  fields: FieldMap,
+  search: string | undefined,
+  values: unknown[],
+): string {
+  const term = search?.trim()
+  if (!term) return ""
+  const cols = searchableColumns(fields)
+  if (cols.length === 0) return ""
+  values.push(`%${term}%`)
+  const p = `$${values.length}`
+  return `(${cols.map((c) => `${quoteIdent(c)} ILIKE ${p}`).join(" OR ")})`
 }
 
 export function buildInsert(
@@ -76,21 +102,42 @@ export function buildList(
     orderDir = opts.orderBy.dir === "asc" ? "ASC" : "DESC"
   }
 
+  const where = ['"deleted_at" IS NULL']
+  const values: unknown[] = []
+  const search = searchClause(fields, opts.search, values)
+  if (search) where.push(search)
+
+  values.push(limit)
+  const limitP = `$${values.length}`
+  values.push(offset)
+  const offsetP = `$${values.length}`
+
   return {
-    text: `SELECT * FROM ${qualified(pgSchema, table)} WHERE "deleted_at" IS NULL ORDER BY ${quoteIdent(
-      orderCol,
-    )} ${orderDir} LIMIT $1 OFFSET $2`,
-    values: [limit, offset],
+    text: `SELECT * FROM ${qualified(pgSchema, table)} WHERE ${where.join(
+      " AND ",
+    )} ORDER BY ${quoteIdent(orderCol)} ${orderDir} LIMIT ${limitP} OFFSET ${offsetP}`,
+    values,
   }
 }
 
-export function buildCount(pgSchema: string, table: string): SqlQuery {
+export function buildCount(
+  pgSchema: string,
+  table: string,
+  fields?: FieldMap,
+  search?: string,
+): SqlQuery {
+  const where = ['"deleted_at" IS NULL']
+  const values: unknown[] = []
+  if (fields) {
+    const clause = searchClause(fields, search, values)
+    if (clause) where.push(clause)
+  }
   return {
     text: `SELECT count(*)::int AS count FROM ${qualified(
       pgSchema,
       table,
-    )} WHERE "deleted_at" IS NULL`,
-    values: [],
+    )} WHERE ${where.join(" AND ")}`,
+    values,
   }
 }
 

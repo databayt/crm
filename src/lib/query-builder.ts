@@ -52,8 +52,10 @@ export async function listRecords(
 export async function countRecords(
   pgSchema: string,
   table: string,
+  fields?: FieldMap,
+  search?: string,
 ): Promise<number> {
-  const q = buildCount(pgSchema, table)
+  const q = buildCount(pgSchema, table, fields, search)
   const { rows } = await pgPool.query<{ count: number }>(q.text, q.values)
   return rows[0]?.count ?? 0
 }

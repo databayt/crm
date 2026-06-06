@@ -3,28 +3,29 @@ import Link from "next/link"
 import { logout } from "@/components/auth/actions"
 import { Button } from "@/components/ui/button"
 
-const NAV = [
-  { key: "dashboard", href: "" },
-  { key: "companies", href: "/companies" },
-  { key: "people", href: "/people" },
-  { key: "opportunities", href: "/opportunities" },
-  { key: "pipeline", href: "/pipeline" },
-  { key: "settings", href: "/settings" },
-] as const
+export interface NavObject {
+  namePlural: string
+  labelPlural: string
+}
 
 export function PlatformShell({
   lang,
   workspaceName,
   role,
   nav,
+  objects,
   children,
 }: {
   lang: string
   workspaceName: string
   role: string
   nav: Record<string, string>
+  objects: NavObject[]
   children: React.ReactNode
 }) {
+  const linkClass =
+    "hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm transition-colors"
+
   return (
     <div className="flex min-h-svh">
       <aside className="flex w-60 shrink-0 flex-col gap-1 border-e bg-sidebar p-3 text-sidebar-foreground">
@@ -33,13 +34,16 @@ export function PlatformShell({
           <div className="text-xs text-muted-foreground">{role}</div>
         </div>
         <nav className="flex flex-col gap-0.5">
-          {NAV.map((item) => (
+          <Link href={`/${lang}`} className={linkClass}>
+            {nav.dashboard ?? "Dashboard"}
+          </Link>
+          {objects.map((o) => (
             <Link
-              key={item.key}
-              href={`/${lang}${item.href}`}
-              className="rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent"
+              key={o.namePlural}
+              href={`/${lang}/${o.namePlural}`}
+              className={linkClass}
             >
-              {nav[item.key] ?? item.key}
+              {nav[o.namePlural] ?? o.labelPlural}
             </Link>
           ))}
         </nav>

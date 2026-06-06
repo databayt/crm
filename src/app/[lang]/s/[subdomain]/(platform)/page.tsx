@@ -1,20 +1,29 @@
+import Link from "next/link"
+
 import { db } from "@/lib/db"
+import { listObjects } from "@/lib/metadata"
+import { countRecords } from "@/lib/query-builder"
 import { getTenantContext } from "@/lib/tenant-context"
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  params,
+}: {
+  params: Promise<{ lang: string }>
+}) {
+  const { lang } = await params
   const ctx = await getTenantContext()
-  const workspace = ctx
-    ? await db.workspace.findUnique({
-        where: { id: ctx.workspaceId },
-        select: { name: true, subdomain: true, createdAt: true },
-      })
-    : null
+  if (!ctx) return null
 
-  const stats = [
-    { label: "Companies", value: 0 },
-    { label: "People", value: 0 },
-    { label: "Opportunities", value: 0 },
-  ]
+  const [workspace, objects] = await Promise.all([
+    db.workspace.findUnique({
+      where: { id: ctx.workspaceId },
+      select: { name: true },
+    }),
+    listObjects(ctx.workspaceId),
+  ])
+  const counts = await Promise.all(
+    objects.map((o) => countRecords(ctx.pgSchema, o.tableName)),
+  )
 
   return (
     <div className="container-wrapper py-8">
@@ -22,16 +31,19 @@ export default async function DashboardPage() {
         {workspace?.name ?? "Dashboard"}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Your workspace is ready. CRM records arrive as the metadata engine comes
-        online (Phase 2–3).
+        Your CRM at a glance.
       </p>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        {stats.map((s) => (
-          <div key={s.label} className="rounded-lg border p-4">
-            <div className="text-sm text-muted-foreground">{s.label}</div>
-            <div className="mt-1 text-2xl font-semibold">{s.value}</div>
-          </div>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {objects.map((o, i) => (
+          <Link
+            key={o.id}
+            href={`/${lang}/${o.namePlural}`}
+            className="rounded-lg border p-4 transition-colors hover:bg-muted/30"
+          >
+            <div className="text-sm text-muted-foreground">{o.labelPlural}</div>
+            <div className="mt-1 text-2xl font-semibold">{counts[i]}</div>
+          </Link>
         ))}
       </div>
     </div>
