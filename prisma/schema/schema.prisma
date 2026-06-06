@@ -1,0 +1,19 @@
+// CRM — control-plane schema (Prisma, `public` schema).
+//
+// Multi-file schema: this file holds the datasource + generator; domain models
+// live beside it in prisma/schema/*.prisma. Prisma auto-includes every .prisma
+// file in this folder.
+//
+// The DATA plane (per-workspace CRM records) is NOT modelled here — it lives in
+// per-workspace Postgres schemas ("ws_<id>") created at runtime by the metadata
+// engine (src/lib/schema-manager.ts). See AGENTS.md → two-plane architecture.
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}

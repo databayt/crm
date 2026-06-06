@@ -1,0 +1,27 @@
+/// Workspace = the tenant. One per customer org. Resolved from the request
+/// subdomain by src/lib/tenant-context.ts. Its CRM records live in a dedicated
+/// Postgres schema named by `pgSchema` (e.g. "ws_clx123"), provisioned at /join.
+model Workspace {
+  id              String   @id @default(cuid())
+  name            String
+  subdomain       String   @unique // acme → acme.crm.databayt.org
+  customDomain    String?  @unique
+  pgSchema        String   @unique // physical Postgres schema for the data plane
+  logoUrl         String?
+  defaultLocale   String   @default("ar") // "ar" | "en"
+  defaultCurrency String   @default("USD")
+  planType        String   @default("free")
+  isActive        Boolean  @default(true)
+  // Owner — immutable, set at creation. One workspace per creator (race guard).
+  createdByUserId String?  @unique
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  members        Member[]
+  objectMetadata ObjectMetadata[]
+  fieldMetadata  FieldMetadata[]
+  views          View[]
+  favorites      Favorite[]
+
+  @@map("workspaces")
+}

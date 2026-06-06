@@ -1,0 +1,104 @@
+// Auth & membership models.
+//
+// User is a GLOBAL identity (one row per person, email unique across the whole
+// platform). Tenancy is expressed by Member (user ↔ workspace). The "current"
+// workspace is never stored on the user — it is derived from the request
+// subdomain and authorized against Member in src/lib/tenant-context.ts.
+
+enum GlobalRole {
+  PLATFORM_ADMIN // databayt staff — cross-workspace
+  USER
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+model User {
+  id            String     @id @default(cuid())
+  name          String?
+  email         String     @unique
+  emailVerified DateTime?
+  image         String?
+  password      String? // null for OAuth-only users
+  role          GlobalRole @default(USER)
+  isSuspended   Boolean    @default(false)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+  members  Member[]
+
+  @@map("users")
+}
+
+// OAuth account links (Auth.js PrismaAdapter).
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// Present for adapter compatibility; unused under the JWT session strategy.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model PasswordResetToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+
+  @@unique([email, token])
+  @@map("password_reset_tokens")
+}
+
+/// The tenant membership: which users belong to which workspace, and their role.
+model Member {
+  id          String     @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        MemberRole @default(MEMBER)
+  createdAt   DateTime   @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+  @@map("members")
+}

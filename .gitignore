@@ -44,3 +44,6 @@ next-env.d.ts
 
 # JetBrains IDE
 /.idea/
+
+# Browser/Playwright MCP verification artifacts
+/.claude/playwright-output/

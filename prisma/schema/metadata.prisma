@@ -1,0 +1,95 @@
+// The metadata registry — the heart of the control plane.
+//
+// Every CRM object (standard AND custom) is described by an ObjectMetadata row
+// plus its FieldMetadata rows. The metadata engine (src/lib/schema-manager.ts)
+// reads these to materialize a real table in the workspace's data-plane schema
+// (ws_<id>). Standard objects (company/person/opportunity/activity/pipeline/
+// stage) are just seed metadata — identical code path to user-created objects.
+//
+// Labels are single-language (primary locale) per the databayt i18n rule — no
+// labelAr/labelEn columns; translation is on-demand.
+
+model ObjectMetadata {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  nameSingular  String // machine name, snake_case singular, e.g. "company"
+  namePlural    String // "companies" — used in routes/URLs
+  labelSingular String // human label, primary locale
+  labelPlural   String
+  icon          String? // lucide icon name
+  description   String?
+  isCustom      Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  tableName     String // physical table name inside ws_<id>
+  position      Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  fields    FieldMetadata[]
+
+  @@unique([workspaceId, nameSingular])
+  @@index([workspaceId])
+  @@map("object_metadata")
+}
+
+model FieldMetadata {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  objectId     String
+  name         String // column name, snake_case
+  label        String // human label, primary locale
+  type         String // FieldType: TEXT|NUMBER|BOOLEAN|DATE|DATETIME|SELECT|MULTI_SELECT|RELATION|CURRENCY|EMAIL|PHONE|URL|RATING
+  isCustom     Boolean  @default(false)
+  isNullable   Boolean  @default(true)
+  isSystem     Boolean  @default(false) // id / created_at / updated_at
+  isUnique     Boolean  @default(false)
+  defaultValue String?
+  options      Json? // SELECT options, RELATION target object, currency code, ...
+  position     Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  object    ObjectMetadata @relation(fields: [objectId], references: [id], onDelete: Cascade)
+
+  @@unique([objectId, name])
+  @@index([workspaceId])
+  @@map("field_metadata")
+}
+
+/// A saved table/kanban view: filters, sorts, visible fields, grouping.
+model View {
+  id          String   @id @default(cuid())
+  workspaceId String
+  objectId    String // references ObjectMetadata.id (loose FK — may be a custom object)
+  name        String
+  viewType    String   @default("table") // table | kanban
+  config      Json     @default("{}") // { filters, sorts, visibleFields, groupBy }
+  isDefault   Boolean  @default(false)
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, objectId])
+  @@map("views")
+}
+
+/// A member's pinned object or record in the sidebar.
+model Favorite {
+  id          String   @id @default(cuid())
+  workspaceId String
+  memberId    String
+  objectId    String?
+  recordId    String?
+  label       String
+  position    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, memberId])
+  @@map("favorites")
+}
