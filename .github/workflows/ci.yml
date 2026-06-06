@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref so pushes don't pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      HUSKY: "0" # don't install git hooks in CI
+      # Dummy connection strings — `prisma generate` and `next build` never
+      # connect to the DB at build time, but the env vars must be present.
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/crm?schema=public"
+      DIRECT_URL: "postgresql://user:pass@localhost:5432/crm?schema=public"
+      AUTH_SECRET: "ci-placeholder-secret"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4 # version comes from the packageManager field
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # postinstall runs `prisma generate` so the typed client exists for typecheck.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Cheapest gates first, build last — fail fast before the slow step.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

@@ -1,0 +1,3 @@
+# Whole-project gates before anything leaves the machine. Keep commits fast
+# (pre-commit only touches staged files); catch type + test regressions here.
+pnpm typecheck && pnpm test

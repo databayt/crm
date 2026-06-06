@@ -1,0 +1,28 @@
+// CRM — control-plane schema (Prisma, public schema).
+//
+// Multi-file structure: this file holds the datasource + generator. Domain
+// models live in prisma/models/*.prisma and are added in Phase 1+ (Workspace,
+// User, Member, Account, ObjectMetadata, FieldMetadata, View, Favorite).
+//
+// The DATA plane (per-workspace CRM records) is NOT modelled here — it lives in
+// per-workspace Postgres schemas ("ws_<id>") created at runtime by the metadata
+// engine (src/lib/schema-manager.ts). See the plan's two-plane architecture.
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Phase 0 placeholder so `prisma generate` produces a client. Removed in Phase 1
+// when the real control-plane models land in prisma/models/.
+model HealthCheck {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  @@map("health_check")
+}

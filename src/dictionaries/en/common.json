@@ -1,0 +1,27 @@
+{
+  "app": {
+    "name": "CRM",
+    "tagline": "Customer relationship management"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "companies": "Companies",
+    "people": "People",
+    "opportunities": "Opportunities",
+    "pipeline": "Pipeline",
+    "settings": "Settings"
+  },
+  "actions": {
+    "create": "Create",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit"
+  },
+  "landing": {
+    "title": "The open-source CRM",
+    "subtitle": "Arabic-first, multi-tenant, metadata-driven — built on databayt.",
+    "cta": "Get started",
+    "source": "Source"
+  }
+}

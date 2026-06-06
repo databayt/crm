@@ -1,0 +1,247 @@
+# Story Breakdown: Epic-0 — Scaffold (i18n shell, ui copy, CI)
+
+## Status: ✅ DONE (closed reference epic)
+
+> **Phase 0** of `~/.claude/plans/here-in-crm-we-typed-hickey.md`. This epic is
+> **already shipped** — it is the closed reference epic that every later epic builds
+> on. Stories below are marked complete and document **what actually landed** in
+> `/Users/abdout/crm` (verified on disk). No user-facing FR; pure infrastructure.
+
+---
+
+## Epic Goal
+
+Stand up the canonical databayt Next.js 16 skeleton for the CRM: lab's configs with
+the fumadocs/docs machinery stripped, the Prisma + auth + data-plane dependencies
+added, the directory skeleton in place, an Arabic-default i18n shell (`/` → `/ar`,
+RTL by default), the shadcn `ui`/`atom` primitives copied, and CI green. The exit
+condition — `pnpm dev` on :3000 renders a localized empty platform shell in both `ar`
+(RTL) and `en` (LTR), `pnpm validate` and CI green — is **met**.
+
+## Dependencies
+
+- **Upstream:** none (greenfield root). Models the skeleton on `/Users/abdout/lab`,
+  reuses `/Users/abdout/codebase` (ui/atom) and `/Users/abdout/hogwarts` (conventions).
+- **Downstream:** every later epic (1–6) depends on this scaffold — configs, the
+  `[lang]` routing shell, the i18n contract, the `ui`/`atom` primitives, and CI.
+
+---
+
+## STORY-0.1: Root configs ported from lab (fumadocs stripped) — ✅ DONE
+
+**As a** developer
+**I want** the lab root configs copied and the docs/fumadocs machinery removed
+**So that** the CRM builds, lints, type-checks, and formats on the databayt standard
+
+**Acceptance Criteria:**
+
+- Given `tsconfig.json`, when inspected, then `@/* → src/*` is kept and the
+  `@/content/*` / `@/.source` fumadocs aliases are dropped.
+- Given `next.config.ts`, when inspected, then `reactCompiler: true` is kept and the
+  `createMDX()` wrapper is removed (no MDX in this app).
+- Given `components.json`, when inspected, then `rtl: true`, new-york/radix-nova style,
+  RSC, and lucide are kept verbatim.
+- Given `eslint.config.mjs`, `.prettierrc.json` (`semi: false`), `postcss.config.mjs`,
+  `pnpm-workspace.yaml`, when inspected, then they match lab.
+- Given `pnpm validate`, when run, then typecheck + lint + test + build all pass.
+
+**Files to change:**
+
+| File                                                       | Change                                                     |
+| ---------------------------------------------------------- | ---------------------------------------------------------- |
+| `tsconfig.json`                                            | Copy lab; drop `@/content/*`, `@/.source` aliases          |
+| `next.config.ts`                                           | Copy lab; remove `createMDX()`, keep `reactCompiler: true` |
+| `components.json`                                          | Copy lab verbatim (`rtl: true`, radix-nova, lucide)        |
+| `eslint.config.mjs`, `.prettierrc.json`, `.prettierignore` | Copy lab verbatim                                          |
+| `postcss.config.mjs`, `pnpm-workspace.yaml`                | Copy lab verbatim                                          |
+| `.gitignore`                                               | Copy lab; keep `.env`, add `/prisma/*.db`                  |
+
+**Estimate:** 1-2 hours · **Status:** ✅ shipped
+
+---
+
+## STORY-0.2: package.json — lab minus docs, plus Prisma/auth/data deps — ✅ DONE
+
+**As a** developer
+**I want** the dependency set trimmed of all fumadocs/mdx tooling and extended with the
+CRM stack (Prisma, Auth.js, TanStack Table, RHF, nuqs, dnd-kit, pg)
+**So that** every later epic has its libraries pinned to databayt-current versions
+
+**Acceptance Criteria:**
+
+- Given `package.json`, when inspected, then **no** `fumadocs-*`, `@mdx-js/*`, `shiki`,
+  `remark-*`, `rehype-*`, `katex`, `mermaid` deps remain.
+- Given `package.json`, when inspected, then `prisma@^6.19` + `@prisma/client@^6.19`,
+  `next-auth@5.0.0-beta.31` + `@auth/prisma-adapter`, `@tanstack/react-table@^8.21`,
+  `react-hook-form@^7.74` + `@hookform/resolvers@^5.2`, `nuqs@^2`, `@upstash/redis`,
+  `@dnd-kit/core`+`@dnd-kit/sortable`+`@dnd-kit/modifiers`+`@dnd-kit/utilities`, `pg`,
+  `next@16.2.7`, `react@19.2.x` are present.
+- Given the scripts block, when inspected, then `dev`/`start` use **port 3000**, and
+  `db:generate`/`db:migrate`/`db:push`/`db:studio`/`db:seed` + `validate` exist.
+- Given `pnpm install`, when run, then `postinstall: prisma generate` runs.
+
+**Files to change:**
+
+| File             | Change                                                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`   | Strip fumadocs/mdx; add Prisma/auth/table/form/nuqs/dnd-kit/pg; port-3000 scripts; Prisma scripts; `postinstall: prisma generate` |
+| `pnpm-lock.yaml` | Regenerated by `pnpm install`                                                                                                     |
+
+**Estimate:** 1 hour · **Status:** ✅ shipped (verified: deps + scripts present)
+
+---
+
+## STORY-0.3: globals.css — Tailwind 4 CSS-first + RTL font mapping — ✅ DONE
+
+**As a** developer
+**I want** the Tailwind-4 CSS-first OKLCH token block with `dir`-switched fonts
+**So that** Arabic renders in Tajawal (RTL) and English in Inter (LTR) with no
+`tailwind.config.js`
+
+**Acceptance Criteria:**
+
+- Given `src/app/globals.css`, when inspected, then it imports Tailwind 4 (`@import
+"tailwindcss"`) + shadcn base, defines `:root`/`.dark` OKLCH tokens and `--radius`,
+  and has **no** `tailwind.config.js` anywhere in the repo.
+- Given the font mapping, when `dir='rtl'`, then `--app-font-sans` resolves to Tajawal;
+  when `dir='ltr'`, to Inter.
+- Given `pnpm build`, when run, then Tailwind compiles with zero config-file warnings.
+
+**Files to change:**
+
+| File                  | Change                                                                                                                |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `src/app/globals.css` | Copy lab's Tailwind-4 OKLCH block; add `[dir='rtl']`/`[dir='ltr']` font mapping (Tajawal/Inter) via `--app-font-sans` |
+
+**Estimate:** 1 hour · **Status:** ✅ shipped
+
+---
+
+## STORY-0.4: Directory skeleton (app/data layers added, docs removed) — ✅ DONE
+
+**As a** developer
+**I want** the CRM directory skeleton scaffolded
+**So that** routes and components have their homes before any feature work starts
+
+**Acceptance Criteria:**
+
+- Given `src/`, when inspected, then `app/[lang]/`, `components/{ui,atom,internationalization}`,
+  `dictionaries/{ar,en}`, `hooks/`, `lib/` exist.
+- Given the removed docs machinery, when inspected, then `content/`, `source.config.ts`,
+  `src/mdx-components.tsx`, `src/lib/{docs,control,report}`, `.source/` are **absent**.
+- Given `prisma/`, when inspected, then it exists (schema body lands in Epic-1).
+- Given the route placeholders, when inspected, then the platform/auth route groups
+  (`app/[lang]/(auth)`, `app/[lang]/s/[subdomain]/(platform)`) are reserved for Epic-1/2.
+
+**Files to change:**
+
+| File                                                                                                | Change                    |
+| --------------------------------------------------------------------------------------------------- | ------------------------- |
+| `src/app/`, `src/components/`, `src/lib/`, `src/dictionaries/`, `src/hooks/`, `prisma/`             | Create skeleton dirs      |
+| (removed) `content/`, `source.config.ts`, `src/mdx-components.tsx`, `src/lib/{docs,control,report}` | Omit (lab docs machinery) |
+
+**Estimate:** 1 hour · **Status:** ✅ shipped (verified: `src/{app,components,lib,dictionaries,hooks}` + `prisma/`)
+
+---
+
+## STORY-0.5: i18n shell — default `ar`, `/` → `/ar`, `<html lang dir>` — ✅ DONE
+
+**As an** Arabic-speaking user
+**I want** the app to default to Arabic and right-to-left
+**So that** the CRM is Arabic-first, not a translation layer
+
+**Acceptance Criteria:**
+
+- Given `src/components/internationalization/config.ts`, when inspected, then
+  `locales = ['ar','en']`, `defaultLocale = 'ar'`, and `dirFor()` maps `ar→rtl`,
+  `en→ltr`.
+- Given a visit to `/`, when navigated, then it redirects to `/ar`.
+- Given `[lang]/layout.tsx`, when rendered for `ar`, then `<html lang="ar" dir="rtl">`
+  and `generateStaticParams` returns `[{lang:'ar'},{lang:'en'}]`.
+- Given `pnpm dev` on :3000, when visiting `/ar` and `/en`, then each renders the shell
+  with the correct `dir`.
+
+**Files to change:**
+
+| File                                            | Change                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/components/internationalization/config.ts` | Copy lab; set `defaultLocale='ar'`, `dirFor()`                            |
+| `src/app/page.tsx`                              | Redirect `/` → `/ar` (lab redirected to `/en`)                            |
+| `src/app/layout.tsx`                            | Root `<html>`, theme provider, fonts                                      |
+| `src/app/[lang]/layout.tsx`                     | `<html lang dir>` per locale, dictionary provider, `generateStaticParams` |
+
+**Estimate:** 2 hours · **Status:** ✅ shipped (verified: `internationalization/`, `[lang]/`)
+
+---
+
+## STORY-0.6: UI primitives + atoms + base dictionaries copied — ✅ DONE
+
+**As a** developer
+**I want** the shadcn `ui` primitives, `atom` compositions, and base `common` dictionaries
+**So that** later epics compose from databayt primitives instead of hand-rolling them
+
+**Acceptance Criteria:**
+
+- Given `src/components/ui/`, when inspected, then the shadcn radix-nova primitives are
+  copied from `codebase/src/components/ui/`.
+- Given `src/components/atom/`, when inspected, then the 2+-primitive compositions are
+  copied from `codebase/src/components/atom/`.
+- Given `src/dictionaries/{ar,en}/common.json`, when inspected, then base `common` keys
+  exist in both locales.
+- Given `cn()`, when imported, then it is the sole export of `src/lib/utils.ts`.
+
+**Files to change:**
+
+| File                                                                 | Change                                    |
+| -------------------------------------------------------------------- | ----------------------------------------- |
+| `src/components/ui/*`                                                | Copy from `codebase/src/components/ui/`   |
+| `src/components/atom/*`                                              | Copy from `codebase/src/components/atom/` |
+| `src/dictionaries/ar/common.json`, `src/dictionaries/en/common.json` | Base `common` keys                        |
+| `src/lib/utils.ts`                                                   | `cn()` only                               |
+
+**Estimate:** 1-2 hours · **Status:** ✅ shipped (verified: `ui/`, `atom/`, `dictionaries/{ar,en}/common.json`)
+
+---
+
+## STORY-0.7: Husky + CI green (prisma generate before typecheck) — ✅ DONE
+
+**As a** developer
+**I want** husky hooks and a CI workflow that mirror `pnpm validate`
+**So that** every commit/push and PR is gated on the same checks\*\*
+
+**Acceptance Criteria:**
+
+- Given `.husky/`, when inspected, then `lint-staged` (eslint --fix + prettier) runs on
+  pre-commit and `typecheck + test` on pre-push.
+- Given `.github/workflows/ci.yml`, when inspected, then it runs `pnpm validate` with
+  `HUSKY=0`, frozen lockfile, and **`pnpm prisma generate` before typecheck**.
+- Given a push, when CI runs, then the pipeline is green.
+
+**Files to change:**
+
+| File                                   | Change                                                |
+| -------------------------------------- | ----------------------------------------------------- |
+| `.husky/pre-commit`, `.husky/pre-push` | Copy lab                                              |
+| `.github/workflows/ci.yml`             | Copy lab; add `pnpm prisma generate` before typecheck |
+| `vitest.config.ts`                     | Copy lab (node env, co-located `*.test.ts`)           |
+
+**Estimate:** 1 hour · **Status:** ✅ shipped (verified: `.husky/`, `.github/workflows/ci.yml`)
+
+---
+
+## Summary
+
+| Story                    | What shipped                                     | Estimate   | Status      |
+| ------------------------ | ------------------------------------------------ | ---------- | ----------- |
+| STORY-0.1 Root configs   | tsconfig/next/components/eslint/prettier/postcss | 1-2h       | ✅          |
+| STORY-0.2 package.json   | deps trimmed + CRM stack + scripts               | 1h         | ✅          |
+| STORY-0.3 globals.css    | Tailwind 4 OKLCH + RTL fonts                     | 1h         | ✅          |
+| STORY-0.4 Skeleton       | app/data dirs added, docs removed                | 1h         | ✅          |
+| STORY-0.5 i18n shell     | default `ar`, `/`→`/ar`, `<html lang dir>`       | 2h         | ✅          |
+| STORY-0.6 UI/atoms/dicts | ui + atom + common.json copied                   | 1-2h       | ✅          |
+| STORY-0.7 Husky + CI     | hooks + ci.yml + prisma generate                 | 1h         | ✅          |
+| **Total**                | **scaffold shell**                               | **~8-10h** | **✅ DONE** |
+
+**Exit (met):** `pnpm dev` on :3000 renders the localized empty platform shell in `ar`
+(RTL) and `en` (LTR); `pnpm validate` and CI green. This epic is **closed** and is the
+reference foundation for Epics 1–6.

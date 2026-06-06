@@ -1,0 +1,14 @@
+# Generated
+.next
+coverage
+src/generated
+
+# Dependencies / lockfile
+node_modules
+pnpm-lock.yaml
+
+# Static assets
+public
+
+# Prisma migrations (generated SQL)
+prisma/migrations
