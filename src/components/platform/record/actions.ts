@@ -82,6 +82,39 @@ export async function deleteRecord(
   return { ok: true }
 }
 
+// Patch a single field of one record (inline cell editing). Unlike updateRecord,
+// this only validates the EDITED field's own required-ness — it must not reject
+// because some *other* required field isn't part of this one-field patch (the
+// checkRequired trap). buildUpdate writes only the provided column, so the rest
+// of the row is untouched.
+export async function updateField(
+  objectName: string,
+  id: string,
+  column: string,
+  value: unknown,
+): Promise<RecordResult> {
+  const { workspaceId, pgSchema } = await requireTenant()
+  const object = await getObject(workspaceId, objectName)
+  if (!object) return { error: "Unknown object" }
+
+  const field = object.fields.find((f) => f.name === column)
+  if (!field) return { error: "Unknown field" }
+  if (field.isNullable === false && !String(value ?? "").trim())
+    return { error: `${field.label} is required` }
+
+  const row = await dbUpdateRecord(
+    pgSchema,
+    object.tableName,
+    object.fieldMap,
+    id,
+    {
+      [column]: value,
+    },
+  )
+  if (!row) return { error: "Record not found" }
+  return { ok: true, id: String(row.id) }
+}
+
 export async function bulkDeleteRecords(
   objectName: string,
   ids: string[],

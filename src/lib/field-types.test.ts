@@ -5,6 +5,7 @@ import {
   FIELD_TYPES,
   isFieldType,
   pgTypeFor,
+  toInputString,
 } from "@/lib/field-types"
 
 describe("field-types", () => {
@@ -42,5 +43,22 @@ describe("field-types", () => {
     expect(coerceValue("TEXT", 5)).toBe("5")
     expect(coerceValue("TEXT", null)).toBeNull()
     expect(coerceValue("MULTI_SELECT", ["a", "b"])).toBe('["a","b"]')
+  })
+
+  it("formats stored values back into input strings (Date and ISO string)", () => {
+    expect(toInputString("TEXT", null)).toBe("")
+    expect(toInputString("TEXT", 5)).toBe("5")
+    // Date object (node-postgres) and an ISO string both normalize to the input.
+    const d = new Date("2026-06-07T13:45:00.000Z")
+    expect(toInputString("DATE", d)).toBe("2026-06-07")
+    expect(toInputString("DATETIME", d)).toBe("2026-06-07T13:45")
+    expect(toInputString("DATE", "2026-06-07T13:45:00.000Z")).toBe("2026-06-07")
+    expect(toInputString("DATETIME", "2026-06-07T13:45:00.000Z")).toBe(
+      "2026-06-07T13:45",
+    )
+    // Boolean normalizes from JS boolean or string; empty when unset.
+    expect(toInputString("BOOLEAN", true)).toBe("true")
+    expect(toInputString("BOOLEAN", "false")).toBe("false")
+    expect(toInputString("BOOLEAN", null)).toBe("")
   })
 })

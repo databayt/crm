@@ -19,6 +19,7 @@ import {
 import { ColumnOptions } from "@/components/platform/record/column-options"
 import { FieldCell } from "@/components/platform/record/field-cell"
 import { FilterBar } from "@/components/platform/record/filter-bar"
+import { InlineEdit } from "@/components/platform/record/inline-edit"
 import { exportRecords } from "@/components/platform/record/io-actions"
 import {
   colsToList,
@@ -80,6 +81,7 @@ export function RecordTable({
   total,
   pageSize,
   relationLabels,
+  relationOptions,
   displayField,
 }: {
   objectName: string
@@ -89,6 +91,7 @@ export function RecordTable({
   total: number
   pageSize: number
   relationLabels: Record<string, Record<string, string>>
+  relationOptions: Record<string, { id: string; label: string }[]>
   displayField: string
 }) {
   const [query, setQuery] = useQueryStates(recordUrlParsers, recordUrlOptions)
@@ -112,24 +115,30 @@ export function RecordTable({
       header: f.label,
       cell: ({ row }) => {
         const value = row.original[f.name]
-        const node = (
-          <FieldCell
-            field={f}
-            value={value}
-            relationLabel={relationLabels[f.name]?.[String(value)]}
-          />
-        )
         if (f.name === displayField) {
           return (
             <Link
               href={`${basePath}/${String(row.original.id)}`}
               className="font-medium hover:underline"
             >
-              {node}
+              <FieldCell
+                field={f}
+                value={value}
+                relationLabel={relationLabels[f.name]?.[String(value)]}
+              />
             </Link>
           )
         }
-        return node
+        return (
+          <InlineEdit
+            objectName={objectName}
+            recordId={String(row.original.id)}
+            field={f}
+            value={value}
+            relationLabel={relationLabels[f.name]?.[String(value)]}
+            relationOptions={relationOptions[f.name]}
+          />
+        )
       },
     }))
     return [
@@ -142,7 +151,14 @@ export function RecordTable({
         ),
       },
     ]
-  }, [visibleFields, relationLabels, displayField, basePath, objectName])
+  }, [
+    visibleFields,
+    relationLabels,
+    relationOptions,
+    displayField,
+    basePath,
+    objectName,
+  ])
 
   const table = useReactTable({
     data: rows,

@@ -22,10 +22,14 @@ export function FieldCell({
   field,
   value,
   relationLabel,
+  interactive = true,
 }: {
   field: { type: string; name: string }
   value: unknown
   relationLabel?: string
+  // When false, URL/EMAIL render as plain text (no <a>) — used where the cell is
+  // already wrapped in an interactive element (e.g. the inline-edit button).
+  interactive?: boolean
 }) {
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted-foreground">—</span>
@@ -33,7 +37,7 @@ export function FieldCell({
 
   switch (field.type) {
     case "URL":
-      return (
+      return interactive ? (
         <a
           href={String(value)}
           target="_blank"
@@ -42,15 +46,19 @@ export function FieldCell({
         >
           {String(value)}
         </a>
+      ) : (
+        <span>{String(value)}</span>
       )
     case "EMAIL":
-      return (
+      return interactive ? (
         <a
           href={`mailto:${String(value)}`}
           className="text-primary underline-offset-2 hover:underline"
         >
           {String(value)}
         </a>
+      ) : (
+        <span>{String(value)}</span>
       )
     case "CURRENCY":
       return <span>{fmtCurrency(value)}</span>

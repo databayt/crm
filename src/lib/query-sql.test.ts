@@ -6,6 +6,7 @@ import {
   buildGetById,
   buildInsert,
   buildList,
+  buildSelectByIds,
   buildSoftDelete,
   buildUpdate,
   type FieldMap,
@@ -121,6 +122,14 @@ describe("query-sql builders", () => {
       'WHERE "id"::text = ANY($1) AND "deleted_at" IS NULL',
     )
     expect(q.values).toEqual([["a", "b"]])
+  })
+
+  it("selects exactly the given ids via a single ANY param (relation labels)", () => {
+    const q = buildSelectByIds("ws_acme", "person", ["a", "b", "c"])
+    expect(q.text).toBe(
+      'SELECT * FROM "ws_acme"."person" WHERE "id"::text = ANY($1) AND "deleted_at" IS NULL',
+    )
+    expect(q.values).toEqual([["a", "b", "c"]])
   })
 
   it("only orders by allowlisted columns", () => {

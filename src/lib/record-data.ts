@@ -1,7 +1,7 @@
 import "server-only"
 
 import { getObject, relationTarget, type LoadedObject } from "@/lib/metadata"
-import { listRecords } from "@/lib/query-builder"
+import { getRecordsByIds, listRecords } from "@/lib/query-builder"
 
 export interface RelationOption {
   id: string
@@ -73,16 +73,16 @@ export async function resolveRelationLabels(
       result[field.name] = {}
       continue
     }
-    const trows = await listRecords(
+    // Fetch exactly the referenced ids — not the first N target rows — so labels
+    // never silently disappear when the target table is large.
+    const trows = await getRecordsByIds(
       pgSchema,
       targetObj.tableName,
-      targetObj.fieldMap,
-      { limit: 200 },
+      Array.from(ids),
     )
     const labels: Record<string, string> = {}
     for (const tr of trows) {
-      const id = String(tr.id)
-      if (ids.has(id)) labels[id] = displayLabel(targetObj, tr)
+      labels[String(tr.id)] = displayLabel(targetObj, tr)
     }
     result[field.name] = labels
   }

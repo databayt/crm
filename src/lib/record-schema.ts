@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { toInputString } from "@/lib/field-types"
+
 // Build a Zod schema + form defaults from field metadata. Pure (no server-only),
 // so the generic client form can use it as its resolver. Form values are kept as
 // strings; the server action coerces them per FieldType via coerceValue, so this
@@ -32,18 +34,7 @@ export function toFormValues(
 ): RecordFormValues {
   const out: RecordFormValues = {}
   for (const f of fields) {
-    const raw = record?.[f.name]
-    if (raw === null || raw === undefined) {
-      out[f.name] = ""
-    } else if (raw instanceof Date) {
-      // date → YYYY-MM-DD ; datetime → YYYY-MM-DDTHH:mm (for <input type=date/datetime-local>)
-      out[f.name] =
-        f.type === "DATE"
-          ? raw.toISOString().slice(0, 10)
-          : raw.toISOString().slice(0, 16)
-    } else {
-      out[f.name] = String(raw)
-    }
+    out[f.name] = toInputString(f.type, record?.[f.name])
   }
   return out
 }

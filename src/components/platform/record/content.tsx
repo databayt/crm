@@ -120,6 +120,7 @@ export async function RecordContent({
         total={total}
         pageSize={PAGE_SIZE}
         relationLabels={relationLabels}
+        relationOptions={relationOptions}
         displayField={object.displayField}
       />
     </div>

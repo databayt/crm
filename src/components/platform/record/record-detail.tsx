@@ -1,13 +1,14 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-import { getObjectByPlural } from "@/lib/metadata"
+import { getObjectByPlural, selectChoices } from "@/lib/metadata"
 import { getRecord } from "@/lib/query-builder"
 import { getRelationOptions, resolveRelationLabels } from "@/lib/record-data"
 import { requireTenant } from "@/lib/tenant-context"
 import { ActivityTimeline } from "@/components/platform/record/activity-timeline"
-import { FieldCell } from "@/components/platform/record/field-cell"
+import { InlineEdit } from "@/components/platform/record/inline-edit"
 import { RecordForm } from "@/components/platform/record/record-form"
+import { RelatedPanels } from "@/components/platform/record/related-panels"
 import { Button } from "@/components/ui/button"
 
 export async function RecordDetail({
@@ -67,12 +68,21 @@ export async function RecordDetail({
             <div key={f.name} className="grid grid-cols-3 gap-4 px-4 py-3">
               <dt className="text-sm text-muted-foreground">{f.label}</dt>
               <dd className="col-span-2 text-sm">
-                <FieldCell
-                  field={f}
+                <InlineEdit
+                  objectName={object.nameSingular}
+                  recordId={recordId}
+                  field={{
+                    name: f.name,
+                    label: f.label,
+                    type: f.type,
+                    isNullable: f.isNullable,
+                    choices: f.type === "SELECT" ? selectChoices(f) : undefined,
+                  }}
                   value={record[f.name]}
                   relationLabel={
                     relationLabels[f.name]?.[String(record[f.name])]
                   }
+                  relationOptions={relationOptions[f.name]}
                 />
               </dd>
             </div>
@@ -83,6 +93,12 @@ export async function RecordDetail({
           recordId={recordId}
         />
       </div>
+
+      <RelatedPanels
+        lang={lang}
+        objectName={object.nameSingular}
+        recordId={recordId}
+      />
     </div>
   )
 }

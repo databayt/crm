@@ -7,6 +7,7 @@ import {
   buildGetById,
   buildInsert,
   buildList,
+  buildSelectByIds,
   buildSoftDelete,
   buildUpdate,
   type FieldMap,
@@ -70,6 +71,17 @@ export async function getRecord(
   const q = buildGetById(pgSchema, table, id)
   const { rows } = await pgPool.query<RecordRow>(q.text, q.values)
   return rows[0] ?? null
+}
+
+export async function getRecordsByIds(
+  pgSchema: string,
+  table: string,
+  ids: string[],
+): Promise<RecordRow[]> {
+  if (ids.length === 0) return []
+  const q = buildSelectByIds(pgSchema, table, ids)
+  const { rows } = await pgPool.query<RecordRow>(q.text, q.values)
+  return rows
 }
 
 export async function updateRecord(

@@ -319,3 +319,20 @@ export function buildBulkSoftDelete(
     values: [ids],
   }
 }
+
+// Fetch exactly the rows for a set of ids (single ANY param). Used to resolve
+// RELATION labels precisely, instead of scanning the first N target rows and
+// silently dropping labels for ids beyond that window.
+export function buildSelectByIds(
+  pgSchema: string,
+  table: string,
+  ids: string[],
+): SqlQuery {
+  return {
+    text: `SELECT * FROM ${qualified(
+      pgSchema,
+      table,
+    )} WHERE "id"::text = ANY($1) AND "deleted_at" IS NULL`,
+    values: [ids],
+  }
+}

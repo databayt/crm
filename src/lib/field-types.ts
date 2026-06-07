@@ -47,6 +47,33 @@ export function pgTypeFor(type: string): string {
   return PG_TYPE[type]
 }
 
+// Inverse of coerceValue: a stored value → the string an <input>/<select> shows.
+// Handles both Date objects (node-postgres) and ISO strings (defensive, e.g. a
+// value that crossed a boundary as a string). Single source for the record form
+// and the inline editor, so DATE/DATETIME format identically everywhere.
+export function toInputString(type: string, value: unknown): string {
+  if (value === null || value === undefined) return ""
+  if (value instanceof Date) {
+    return type === "DATE"
+      ? value.toISOString().slice(0, 10)
+      : value.toISOString().slice(0, 16)
+  }
+  if ((type === "DATE" || type === "DATETIME") && typeof value === "string") {
+    const d = new Date(value)
+    if (!Number.isNaN(d.getTime())) {
+      return type === "DATE"
+        ? d.toISOString().slice(0, 10)
+        : d.toISOString().slice(0, 16)
+    }
+  }
+  if (type === "BOOLEAN") {
+    if (value === true || value === "true") return "true"
+    if (value === false || value === "false") return "false"
+    return ""
+  }
+  return String(value)
+}
+
 // Coerce a JS value into a form node-postgres can bind for the given field type.
 // Returns null for empty/missing values (all business columns are nullable).
 export function coerceValue(type: string, value: unknown): unknown {
