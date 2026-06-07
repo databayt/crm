@@ -25,14 +25,20 @@ export default async function Landing({
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <Button asChild size="lg">
-          <Link href="https://github.com/databayt">{dict.landing.cta}</Link>
+          <Link href={`/${lang}/register`}>{dict.landing.cta}</Link>
         </Button>
         <Button asChild size="lg" variant="outline">
-          <Link href="https://github.com/twentyhq/twenty">
-            {dict.landing.source}
-          </Link>
+          <Link href={`/${lang}/login`}>{dict.landing.signin}</Link>
         </Button>
       </div>
+      <a
+        href="https://github.com/databayt/crm"
+        target="_blank"
+        rel="noreferrer"
+        className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+      >
+        {dict.landing.source}
+      </a>
     </main>
   )
 }

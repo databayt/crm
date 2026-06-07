@@ -47,3 +47,4 @@ next-env.d.ts
 
 # Browser/Playwright MCP verification artifacts
 /.claude/playwright-output/
+.env*.local
