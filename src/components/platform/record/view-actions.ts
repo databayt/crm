@@ -4,9 +4,18 @@ import { Prisma } from "@prisma/client"
 
 import { db } from "@/lib/db"
 import { getObject } from "@/lib/metadata"
+import type { FilterGroup } from "@/lib/query-sql"
 import { requireTenant } from "@/lib/tenant-context"
 
-export type ViewConfig = { search?: string; sort?: string; dir?: string }
+// A saved view captures the full table state: free-text search, sort, the
+// active filter group, and which columns are visible (empty/undefined = all).
+export type ViewConfig = {
+  search?: string
+  sort?: string
+  dir?: string
+  filters?: FilterGroup
+  cols?: string[]
+}
 export type ViewResult = { error?: string; ok?: boolean }
 
 export async function saveView(

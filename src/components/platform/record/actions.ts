@@ -2,6 +2,7 @@
 
 import { getObject } from "@/lib/metadata"
 import {
+  bulkSoftDeleteRecords,
   getRecord,
   insertRecord,
   softDeleteRecord,
@@ -9,7 +10,12 @@ import {
 } from "@/lib/query-builder"
 import { requireTenant } from "@/lib/tenant-context"
 
-export type RecordResult = { error?: string; ok?: boolean; id?: string }
+export type RecordResult = {
+  error?: string
+  ok?: boolean
+  id?: string
+  count?: number
+}
 
 function checkRequired(
   fields: { name: string; label: string; isNullable: boolean }[],
@@ -74,6 +80,19 @@ export async function deleteRecord(
   if (!object) return { error: "Unknown object" }
   await softDeleteRecord(pgSchema, object.tableName, id)
   return { ok: true }
+}
+
+export async function bulkDeleteRecords(
+  objectName: string,
+  ids: string[],
+): Promise<RecordResult> {
+  const { workspaceId, pgSchema } = await requireTenant()
+  const object = await getObject(workspaceId, objectName)
+  if (!object) return { error: "Unknown object" }
+  const clean = ids.map(String).filter(Boolean)
+  if (clean.length === 0) return { ok: true, count: 0 }
+  const count = await bulkSoftDeleteRecords(pgSchema, object.tableName, clean)
+  return { ok: true, count }
 }
 
 export async function fetchRecord(

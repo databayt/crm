@@ -2,6 +2,7 @@ import "server-only"
 
 import { pgPool } from "@/lib/db-data"
 import {
+  buildBulkSoftDelete,
   buildCount,
   buildGetById,
   buildInsert,
@@ -54,8 +55,9 @@ export async function countRecords(
   table: string,
   fields?: FieldMap,
   search?: string,
+  filters?: ListOptions["filters"],
 ): Promise<number> {
-  const q = buildCount(pgSchema, table, fields, search)
+  const q = buildCount(pgSchema, table, fields, search, filters)
   const { rows } = await pgPool.query<{ count: number }>(q.text, q.values)
   return rows[0]?.count ?? 0
 }
@@ -89,4 +91,15 @@ export async function softDeleteRecord(
 ): Promise<void> {
   const q = buildSoftDelete(pgSchema, table, id)
   await pgPool.query(q.text, q.values)
+}
+
+export async function bulkSoftDeleteRecords(
+  pgSchema: string,
+  table: string,
+  ids: string[],
+): Promise<number> {
+  if (ids.length === 0) return 0
+  const q = buildBulkSoftDelete(pgSchema, table, ids)
+  const res = await pgPool.query(q.text, q.values)
+  return res.rowCount ?? 0
 }

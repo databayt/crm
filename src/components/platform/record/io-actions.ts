@@ -3,18 +3,27 @@
 import { toCSV } from "@/lib/csv"
 import { getObject } from "@/lib/metadata"
 import { insertRecord, listRecords } from "@/lib/query-builder"
+import type { FilterGroup } from "@/lib/query-sql"
 import { requireTenant } from "@/lib/tenant-context"
 
 export async function exportRecords(
   objectName: string,
+  opts?: { search?: string; filters?: FilterGroup; ids?: string[] },
 ): Promise<{ csv?: string; filename?: string; error?: string }> {
   const { workspaceId, pgSchema } = await requireTenant()
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
 
-  const rows = await listRecords(pgSchema, object.tableName, object.fieldMap, {
+  let rows = await listRecords(pgSchema, object.tableName, object.fieldMap, {
     limit: 200,
+    search: opts?.search,
+    filters: opts?.filters,
   })
+  // "Export selected" narrows the filtered page to the ticked rows.
+  if (opts?.ids?.length) {
+    const picked = new Set(opts.ids.map(String))
+    rows = rows.filter((r) => picked.has(String(r.id)))
+  }
   const headers = object.fields.map((f) => f.label)
   const data = rows.map((r) =>
     object.fields.map((f) => {

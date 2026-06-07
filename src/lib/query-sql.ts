@@ -4,8 +4,8 @@
 //
 // Tenant isolation is structural: every statement is fully qualified with the
 // caller-resolved pgSchema ("ws_<id>"."table"); we never use search_path. Only
-// known business columns (the FieldMap) are written; system columns are managed
-// by the engine and never accepted from callers.
+// known business columns (the FieldMap) are written/filtered; system columns are
+// managed by the engine and never accepted from callers.
 import { coerceValue } from "@/lib/field-types"
 import { SYSTEM_COLUMNS } from "@/lib/ddl"
 import { qualified, quoteIdent } from "@/lib/sql"
@@ -15,23 +15,48 @@ export interface SqlQuery {
   values: unknown[]
 }
 
-// columnName → FieldType. The allowlist of writable/orderable business columns.
+// columnName → FieldType. The allowlist of writable/orderable/filterable columns.
 export type FieldMap = Record<string, string>
+
+// ── Filtering ───────────────────────────────────────────────────────────────
+export type FilterOp =
+  | "eq"
+  | "neq"
+  | "contains"
+  | "starts_with"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "is_empty"
+  | "is_not_empty"
+
+export interface RecordFilter {
+  column: string
+  op: FilterOp
+  value?: unknown
+}
+export interface FilterGroup {
+  logic?: "AND" | "OR"
+  filters: RecordFilter[]
+}
+// Legacy equality sugar still accepted by ListOptions.filters and buildCount.
+export type LegacyFilter = { column: string; value: unknown }
 
 export interface ListOptions {
   limit?: number
   offset?: number
   orderBy?: { column: string; dir: "asc" | "desc" }
   search?: string
-  // Equality filters, e.g. activity.company_id = <id>. Columns are allowlisted
-  // against the field map (+ system columns); values are coerced + parameterized.
-  filters?: { column: string; value: unknown }[]
+  filters?: FilterGroup | RecordFilter[] | LegacyFilter[]
 }
 
 const MAX_LIMIT = 200
-
 // Field types whose columns participate in free-text search (ILIKE).
 const SEARCHABLE_TYPES = new Set(["TEXT", "EMAIL", "URL", "PHONE", "SELECT"])
+// Field types that accept text operators vs ordered (comparison) operators.
+const TEXTY = new Set(["TEXT", "EMAIL", "URL", "PHONE", "SELECT", "RELATION"])
+const ORDERED = new Set(["NUMBER", "CURRENCY", "RATING", "DATE", "DATETIME"])
 
 function orderableColumns(fields: FieldMap): Set<string> {
   return new Set<string>([...SYSTEM_COLUMNS, ...Object.keys(fields)])
@@ -43,8 +68,6 @@ function searchableColumns(fields: FieldMap): string[] {
     .map(([name]) => name)
 }
 
-// Build the "(col ILIKE $n OR ...)" clause for a search term, appending its
-// parameter to `values`. Returns "" when there's nothing to search.
 function searchClause(
   fields: FieldMap,
   search: string | undefined,
@@ -57,6 +80,85 @@ function searchClause(
   values.push(`%${term}%`)
   const p = `$${values.length}`
   return `(${cols.map((c) => `${quoteIdent(c)} ILIKE ${p}`).join(" OR ")})`
+}
+
+// Normalize the loose `filters` option into a FilterGroup (array → AND-of-eq).
+function normalizeFilters(f: ListOptions["filters"]): FilterGroup | undefined {
+  if (!f) return undefined
+  if (Array.isArray(f)) {
+    return {
+      logic: "AND",
+      filters: f.map((x) =>
+        "op" in x
+          ? x
+          : { column: x.column, op: "eq" as FilterOp, value: x.value },
+      ),
+    }
+  }
+  return f
+}
+
+function opAllowedFor(type: string, op: FilterOp): boolean {
+  if (op === "eq" || op === "neq" || op === "is_empty" || op === "is_not_empty")
+    return true
+  if (op === "contains" || op === "starts_with") return TEXTY.has(type)
+  return ORDERED.has(type) // gt / gte / lt / lte
+}
+
+// Build a WHERE fragment from a filter group, appending params to `values`. Only
+// business columns (present in `fields`) are filterable; each operator is gated
+// by the field type, so a crafted param can never inject SQL or error the query.
+function filterClause(
+  fields: FieldMap,
+  group: FilterGroup | undefined,
+  values: unknown[],
+): string {
+  if (!group?.filters?.length) return ""
+  const parts: string[] = []
+  for (const f of group.filters) {
+    if (!(f.column in fields)) continue
+    const type = fields[f.column]
+    if (!opAllowedFor(type, f.op)) continue
+    const col = quoteIdent(f.column)
+
+    if (f.op === "is_empty") {
+      parts.push(`(${col} IS NULL OR ${col}::text = '')`)
+      continue
+    }
+    if (f.op === "is_not_empty") {
+      parts.push(`(${col} IS NOT NULL AND ${col}::text <> '')`)
+      continue
+    }
+
+    const v = coerceValue(type, f.value)
+    if (v === null || v === undefined) continue
+
+    if (f.op === "contains") {
+      values.push(`%${String(v)}%`)
+      parts.push(`${col} ILIKE $${values.length}`)
+      continue
+    }
+    if (f.op === "starts_with") {
+      values.push(`${String(v)}%`)
+      parts.push(`${col} ILIKE $${values.length}`)
+      continue
+    }
+    const sqlOp = {
+      eq: "=",
+      neq: "<>",
+      gt: ">",
+      gte: ">=",
+      lt: "<",
+      lte: "<=",
+    }[f.op]
+    if (!sqlOp) continue
+    values.push(v)
+    parts.push(`${col} ${sqlOp} $${values.length}`)
+  }
+  if (parts.length === 0) return ""
+  if (parts.length === 1) return parts[0]
+  const logic = group.logic === "OR" ? " OR " : " AND "
+  return `(${parts.join(logic)})`
 }
 
 export function buildInsert(
@@ -108,17 +210,11 @@ export function buildList(
   const where = ['"deleted_at" IS NULL']
   const values: unknown[] = []
 
-  const allowed = orderableColumns(fields)
-  for (const f of opts.filters ?? []) {
-    if (!allowed.has(f.column)) continue
-    const v =
-      f.column in fields ? coerceValue(fields[f.column], f.value) : f.value
-    values.push(v)
-    where.push(`${quoteIdent(f.column)} = $${values.length}`)
-  }
+  const fclause = filterClause(fields, normalizeFilters(opts.filters), values)
+  if (fclause) where.push(fclause)
 
-  const search = searchClause(fields, opts.search, values)
-  if (search) where.push(search)
+  const sclause = searchClause(fields, opts.search, values)
+  if (sclause) where.push(sclause)
 
   values.push(limit)
   const limitP = `$${values.length}`
@@ -138,12 +234,15 @@ export function buildCount(
   table: string,
   fields?: FieldMap,
   search?: string,
+  filters?: ListOptions["filters"],
 ): SqlQuery {
   const where = ['"deleted_at" IS NULL']
   const values: unknown[] = []
   if (fields) {
-    const clause = searchClause(fields, search, values)
-    if (clause) where.push(clause)
+    const fclause = filterClause(fields, normalizeFilters(filters), values)
+    if (fclause) where.push(fclause)
+    const sclause = searchClause(fields, search, values)
+    if (sclause) where.push(sclause)
   }
   return {
     text: `SELECT count(*)::int AS count FROM ${qualified(
@@ -204,5 +303,19 @@ export function buildSoftDelete(
       table,
     )} SET "deleted_at" = now() WHERE "id" = $1 AND "deleted_at" IS NULL`,
     values: [id],
+  }
+}
+
+export function buildBulkSoftDelete(
+  pgSchema: string,
+  table: string,
+  ids: string[],
+): SqlQuery {
+  return {
+    text: `UPDATE ${qualified(
+      pgSchema,
+      table,
+    )} SET "deleted_at" = now() WHERE "id"::text = ANY($1) AND "deleted_at" IS NULL`,
+    values: [ids],
   }
 }

@@ -9,11 +9,22 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table"
-import { parseAsInteger, parseAsString, useQueryStates } from "nuqs"
+import { useQueryStates } from "nuqs"
 import { toast } from "sonner"
 
-import { deleteRecord } from "@/components/platform/record/actions"
+import {
+  bulkDeleteRecords,
+  deleteRecord,
+} from "@/components/platform/record/actions"
+import { ColumnOptions } from "@/components/platform/record/column-options"
 import { FieldCell } from "@/components/platform/record/field-cell"
+import { FilterBar } from "@/components/platform/record/filter-bar"
+import { exportRecords } from "@/components/platform/record/io-actions"
+import {
+  colsToList,
+  recordUrlOptions,
+  recordUrlParsers,
+} from "@/components/platform/record/record-url"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
@@ -21,9 +32,20 @@ interface TableField {
   name: string
   label: string
   type: string
+  choices?: string[]
 }
 
 type Row = Record<string, unknown>
+
+function downloadCsv(csv: string, filename: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 function RowActions({ objectName, id }: { objectName: string; id: string }) {
   const router = useRouter()
@@ -69,20 +91,23 @@ export function RecordTable({
   relationLabels: Record<string, Record<string, string>>
   displayField: string
 }) {
-  const [query, setQuery] = useQueryStates(
-    {
-      q: parseAsString.withDefault(""),
-      page: parseAsInteger.withDefault(1),
-      sort: parseAsString.withDefault(""),
-      dir: parseAsString.withDefault("asc"),
-    },
-    { shallow: false },
-  )
-  const { q, page, sort, dir } = query
+  const [query, setQuery] = useQueryStates(recordUrlParsers, recordUrlOptions)
+  const { q, page, sort, dir, filters, cols } = query
   const [searchInput, setSearchInput] = useState(q)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const router = useRouter()
+  const [bulkPending, startBulk] = useTransition()
+
+  // Visible columns: an explicit `cols` subset (original order) or all fields.
+  const visibleFields = useMemo(() => {
+    const want = colsToList(cols)
+    if (want.length === 0) return fields
+    const set = new Set(want)
+    return fields.filter((f) => set.has(f.name))
+  }, [fields, cols])
 
   const columns = useMemo<ColumnDef<Row>[]>(() => {
-    const fieldCols: ColumnDef<Row>[] = fields.map((f) => ({
+    const fieldCols: ColumnDef<Row>[] = visibleFields.map((f) => ({
       accessorKey: f.name,
       header: f.label,
       cell: ({ row }) => {
@@ -117,7 +142,7 @@ export function RecordTable({
         ),
       },
     ]
-  }, [fields, relationLabels, displayField, basePath, objectName])
+  }, [visibleFields, relationLabels, displayField, basePath, objectName])
 
   const table = useReactTable({
     data: rows,
@@ -127,27 +152,117 @@ export function RecordTable({
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
+  const pageIds = rows.map((r) => String(r.id))
+  const allSelected =
+    pageIds.length > 0 && pageIds.every((id) => selected.has(id))
+
+  const toggleAll = () =>
+    setSelected((prev) => {
+      if (pageIds.every((id) => prev.has(id))) return new Set()
+      return new Set(pageIds)
+    })
+
+  const toggleOne = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  const onBulkDelete = () =>
+    startBulk(async () => {
+      const ids = [...selected]
+      const res = await bulkDeleteRecords(objectName, ids)
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
+      toast.success(`Deleted ${res.count ?? ids.length}`)
+      setSelected(new Set())
+      router.refresh()
+    })
+
+  const onExportSelected = () =>
+    startBulk(async () => {
+      const res = await exportRecords(objectName, {
+        ids: [...selected],
+        filters: filters ?? undefined,
+        search: q || undefined,
+      })
+      if (res.error || !res.csv) {
+        toast.error(res.error ?? "Export failed")
+        return
+      }
+      downloadCsv(res.csv, res.filename ?? "export.csv")
+    })
+
   return (
     <div className="space-y-4">
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          setQuery({ q: searchInput || null, page: 1 })
-        }}
-      >
-        <Input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Search…"
-          className="max-w-xs"
-        />
-      </form>
+      <div className="flex flex-wrap items-center gap-2">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            setQuery({ q: searchInput || null, page: 1 })
+          }}
+        >
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search…"
+            className="max-w-xs"
+          />
+        </form>
+        <FilterBar fields={fields} />
+        <div className="ms-auto">
+          <ColumnOptions fields={fields} />
+        </div>
+      </div>
+
+      {selected.size > 0 ? (
+        <div className="flex items-center gap-3 rounded-lg border bg-muted/50 px-4 py-2 text-sm">
+          <span className="font-medium">{selected.size} selected</span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={bulkPending}
+            onClick={onExportSelected}
+          >
+            Export selected
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={bulkPending}
+            onClick={onBulkDelete}
+          >
+            Delete ({selected.size})
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            onClick={() => setSelected(new Set())}
+          >
+            Clear
+          </Button>
+        </div>
+      ) : null}
 
       <div className="overflow-hidden rounded-lg border">
         <table className="w-full text-sm">
           <thead className="bg-muted/50 text-muted-foreground">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>
+                <th className="w-10 px-4 py-2 text-start">
+                  <input
+                    type="checkbox"
+                    className="size-4 accent-primary"
+                    aria-label="Select all"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                  />
+                </th>
                 {hg.headers.map((h) => {
                   const colId = h.column.id
                   const sortable = fields.some((f) => f.name === colId)
@@ -190,25 +305,43 @@ export function RecordTable({
             {table.getRowModel().rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length}
+                  colSpan={columns.length + 1}
                   className="px-4 py-8 text-center text-muted-foreground"
                 >
                   No records.
                 </td>
               </tr>
             ) : (
-              table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-t hover:bg-muted/30">
-                  {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-4 py-2">
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
+              table.getRowModel().rows.map((row) => {
+                const id = String(row.original.id)
+                const isSel = selected.has(id)
+                return (
+                  <tr
+                    key={row.id}
+                    className={`border-t hover:bg-muted/30 ${
+                      isSel ? "bg-muted/50" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-primary"
+                        aria-label="Select row"
+                        checked={isSel}
+                        onChange={() => toggleOne(id)}
+                      />
                     </td>
-                  ))}
-                </tr>
-              ))
+                    {row.getVisibleCells().map((cell) => (
+                      <td key={cell.id} className="px-4 py-2">
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                )
+              })
             )}
           </tbody>
         </table>

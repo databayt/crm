@@ -2,11 +2,16 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { parseAsInteger, parseAsString, useQueryStates } from "nuqs"
+import { useQueryStates } from "nuqs"
 import { toast } from "sonner"
 
 import { exportRecords } from "@/components/platform/record/io-actions"
 import { ImportDialog } from "@/components/platform/record/import-dialog"
+import {
+  colsToList,
+  recordUrlOptions,
+  recordUrlParsers,
+} from "@/components/platform/record/record-url"
 import {
   deleteView,
   saveView,
@@ -43,14 +48,9 @@ export function RecordToolbar({
   const [pending, start] = useTransition()
   const [saveOpen, setSaveOpen] = useState(false)
   const [viewName, setViewName] = useState("")
-  const [{ q, sort, dir }, setQuery] = useQueryStates(
-    {
-      q: parseAsString.withDefault(""),
-      page: parseAsInteger.withDefault(1),
-      sort: parseAsString.withDefault(""),
-      dir: parseAsString.withDefault("asc"),
-    },
-    { shallow: false },
+  const [{ q, sort, dir, filters, cols }, setQuery] = useQueryStates(
+    recordUrlParsers,
+    recordUrlOptions,
   )
 
   const applyView = (cfg: ViewConfig) =>
@@ -58,15 +58,20 @@ export function RecordToolbar({
       q: cfg.search || null,
       sort: cfg.sort || null,
       dir: cfg.dir || "asc",
+      filters: cfg.filters ?? null,
+      cols: cfg.cols?.length ? cfg.cols.join(",") : null,
       page: 1,
     })
 
   const onSave = () =>
     start(async () => {
+      const colList = colsToList(cols)
       const res = await saveView(objectName, viewName, {
         search: q || undefined,
         sort: sort || undefined,
         dir: sort ? dir : undefined,
+        filters: filters ?? undefined,
+        cols: colList.length ? colList : undefined,
       })
       if (res.error) {
         toast.error(res.error)
@@ -86,7 +91,10 @@ export function RecordToolbar({
 
   const onExport = () =>
     start(async () => {
-      const res = await exportRecords(objectName)
+      const res = await exportRecords(objectName, {
+        search: q || undefined,
+        filters: filters ?? undefined,
+      })
       if (res.error || !res.csv) {
         toast.error(res.error ?? "Export failed")
         return
@@ -146,7 +154,7 @@ export function RecordToolbar({
                 disabled={pending}
               />
               <p className="text-xs text-muted-foreground">
-                Saves the current search and sort.
+                Saves the current search, filters, sort, and visible columns.
               </p>
             </div>
             <DialogFooter>
