@@ -5,10 +5,12 @@
   },
   "nav": {
     "dashboard": "لوحة التحكم",
+    "favorites": "المفضلة",
     "companies": "الشركات",
     "people": "الأشخاص",
     "opportunities": "الفرص",
     "pipeline": "المسار",
+    "members": "الأعضاء",
     "settings": "الإعدادات"
   },
   "actions": {

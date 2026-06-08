@@ -20,6 +20,7 @@ export const RESERVED_SUBDOMAINS = new Set([
   "login",
   "register",
   "join",
+  "invite",
   "dashboard",
   "static",
   "assets",

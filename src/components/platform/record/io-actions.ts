@@ -1,5 +1,6 @@
 "use server"
 
+import { authorize } from "@/lib/authz"
 import { toCSV } from "@/lib/csv"
 import { getObject } from "@/lib/metadata"
 import { insertRecord, listRecords } from "@/lib/query-builder"
@@ -38,7 +39,9 @@ export async function importRecords(
   objectName: string,
   rows: Record<string, unknown>[],
 ): Promise<{ count?: number; failed?: number; error?: string }> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("edit_records")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
 

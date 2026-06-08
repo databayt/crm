@@ -1,8 +1,8 @@
 "use server"
 
+import { authorize } from "@/lib/authz"
 import { getObject, selectChoices } from "@/lib/metadata"
 import { moveRecord as dbMoveRecord } from "@/lib/query-builder"
-import { requireTenant } from "@/lib/tenant-context"
 
 export type MoveResult = { error?: string; ok?: boolean }
 
@@ -21,7 +21,9 @@ export async function moveRecord(
 ): Promise<MoveResult> {
   if (!Number.isFinite(position)) return { error: "Invalid position" }
 
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("edit_records")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
 

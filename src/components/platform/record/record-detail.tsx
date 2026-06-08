@@ -1,10 +1,12 @@
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { db } from "@/lib/db"
 import { getObjectByPlural, selectChoices } from "@/lib/metadata"
 import { getRecord } from "@/lib/query-builder"
 import { getRelationOptions, resolveRelationLabels } from "@/lib/record-data"
 import { requireTenant } from "@/lib/tenant-context"
+import { FavoriteButton } from "@/components/platform/favorites/favorite-button"
 import { ActivityTimeline } from "@/components/platform/record/activity-timeline"
 import { InlineEdit } from "@/components/platform/record/inline-edit"
 import { RecordForm } from "@/components/platform/record/record-form"
@@ -20,7 +22,7 @@ export async function RecordDetail({
   objectPlural: string
   recordId: string
 }) {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const { workspaceId, pgSchema, memberId } = await requireTenant()
   const object = await getObjectByPlural(workspaceId, objectPlural)
   if (!object) notFound()
 
@@ -33,6 +35,15 @@ export async function RecordDetail({
   ])
 
   const title = String(record[object.displayField] ?? object.labelSingular)
+
+  const favorited = memberId
+    ? Boolean(
+        await db.favorite.findFirst({
+          where: { workspaceId, memberId, objectId: object.id, recordId },
+          select: { id: true },
+        }),
+      )
+    : false
 
   return (
     <div className="container-wrapper py-8">
@@ -48,18 +59,28 @@ export async function RecordDetail({
             {title}
           </h1>
         </div>
-        <RecordForm
-          objectName={object.nameSingular}
-          objectLabel={object.labelSingular}
-          fields={object.fields}
-          relationOptions={relationOptions}
-          record={record}
-          trigger={
-            <Button size="sm" variant="outline">
-              Edit
-            </Button>
-          }
-        />
+        <div className="flex items-center gap-2">
+          {memberId ? (
+            <FavoriteButton
+              objectName={object.nameSingular}
+              recordId={recordId}
+              label={title}
+              initialFavorite={favorited}
+            />
+          ) : null}
+          <RecordForm
+            objectName={object.nameSingular}
+            objectLabel={object.labelSingular}
+            fields={object.fields}
+            relationOptions={relationOptions}
+            record={record}
+            trigger={
+              <Button size="sm" variant="outline">
+                Edit
+              </Button>
+            }
+          />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">

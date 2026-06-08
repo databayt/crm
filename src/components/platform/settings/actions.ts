@@ -2,6 +2,7 @@
 
 import { Prisma } from "@prisma/client"
 
+import { authorize } from "@/lib/authz"
 import { SYSTEM_COLUMNS } from "@/lib/ddl"
 import { db } from "@/lib/db"
 import { getObject } from "@/lib/metadata"
@@ -12,7 +13,6 @@ import {
   materializeObject,
 } from "@/lib/schema-manager"
 import { slugifyIdent } from "@/lib/slug"
-import { requireTenant } from "@/lib/tenant-context"
 import {
   AddFieldSchema,
   type AddFieldInput,
@@ -27,7 +27,9 @@ export type SettingsResult = { error?: string; ok?: boolean }
 export async function createObject(
   input: NewObjectInput,
 ): Promise<SettingsResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("manage_objects")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const parsed = NewObjectSchema.safeParse(input)
   if (!parsed.success) return { error: "Invalid fields" }
 
@@ -100,7 +102,9 @@ export async function addField(
   nameSingular: string,
   input: AddFieldInput,
 ): Promise<SettingsResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("manage_objects")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const parsed = AddFieldSchema.safeParse(input)
   if (!parsed.success) return { error: "Invalid fields" }
 
@@ -157,7 +161,9 @@ export async function addField(
 }
 
 export async function deleteField(fieldId: string): Promise<SettingsResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("manage_objects")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const field = await db.fieldMetadata.findFirst({
     where: { id: fieldId, workspaceId },
     include: { object: true },
@@ -178,13 +184,22 @@ export async function deleteField(fieldId: string): Promise<SettingsResult> {
 export async function deleteObject(
   nameSingular: string,
 ): Promise<SettingsResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("manage_objects")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, nameSingular)
   if (!object) return { error: "Unknown object" }
   if (!object.isCustom) return { error: "Standard objects can't be removed" }
 
   try {
     await dropObjectTable(pgSchema, object.tableName)
+    // Favorite has no FK on objectId — purge this object's favorites + views so
+    // they don't linger as orphans (the sidebar already filters them, but keep
+    // the control plane clean).
+    await db.favorite.deleteMany({
+      where: { workspaceId, objectId: object.id },
+    })
+    await db.view.deleteMany({ where: { workspaceId, objectId: object.id } })
     await db.objectMetadata.delete({ where: { id: object.id } })
   } catch (error) {
     console.error("[deleteObject]", error)

@@ -10,7 +10,7 @@ export function AuthShell({
   lang: string
   title: string
   subtitle?: string
-  children: React.ReactNode
+  children?: React.ReactNode
   footer?: React.ReactNode
 }) {
   return (

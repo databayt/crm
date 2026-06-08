@@ -1,5 +1,6 @@
 "use server"
 
+import { authorize } from "@/lib/authz"
 import { getObject } from "@/lib/metadata"
 import {
   bulkSoftDeleteRecords,
@@ -32,7 +33,9 @@ export async function createRecord(
   objectName: string,
   values: Record<string, unknown>,
 ): Promise<RecordResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("edit_records")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
 
@@ -53,7 +56,9 @@ export async function updateRecord(
   id: string,
   values: Record<string, unknown>,
 ): Promise<RecordResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("edit_records")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
 
@@ -75,7 +80,9 @@ export async function deleteRecord(
   objectName: string,
   id: string,
 ): Promise<RecordResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("edit_records")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
   await softDeleteRecord(pgSchema, object.tableName, id)
@@ -93,7 +100,9 @@ export async function updateField(
   column: string,
   value: unknown,
 ): Promise<RecordResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("edit_records")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
 
@@ -119,7 +128,9 @@ export async function bulkDeleteRecords(
   objectName: string,
   ids: string[],
 ): Promise<RecordResult> {
-  const { workspaceId, pgSchema } = await requireTenant()
+  const authz = await authorize("edit_records")
+  if (!authz.ok) return { error: authz.error }
+  const { workspaceId, pgSchema } = authz.ctx
   const object = await getObject(workspaceId, objectName)
   if (!object) return { error: "Unknown object" }
   const clean = ids.map(String).filter(Boolean)

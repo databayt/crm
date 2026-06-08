@@ -1,0 +1,22 @@
+/// A pending invitation to join a workspace with a given role. The `token` is the
+/// secret carried in the invite link (acme.crm.databayt.org/<lang>/invite/<token>);
+/// acceptance creates a Member with `role` and stamps `acceptedAt`. Mirrors
+/// Twenty's InvitationToken (an AppToken whose context holds the email + role),
+/// but as a purpose-built table alongside our other token models.
+model Invitation {
+  id          String     @id @default(cuid())
+  workspaceId String
+  email       String // lowercased before insert
+  role        MemberRole @default(MEMBER) // assigned on accept; never OWNER
+  token       String     @unique // crypto random hex, in the invite link
+  invitedById String? // Member.id of the inviter (audit)
+  expiresAt   DateTime
+  acceptedAt  DateTime? // null = still pending
+  createdAt   DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email]) // one pending invite per email per workspace
+  @@index([workspaceId])
+  @@map("invitations")
+}

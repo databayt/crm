@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 
 import { db } from "@/lib/db"
 import { listObjects } from "@/lib/metadata"
+import { can } from "@/lib/permissions"
 import { getTenantContext } from "@/lib/tenant-context"
 import type { Locale } from "@/components/internationalization/config"
 import { getDictionary } from "@/components/internationalization/dictionaries"
@@ -31,16 +32,40 @@ export default async function PlatformLayout({
     listObjects(ctx.workspaceId),
   ])
 
+  // Sidebar favorites for the current member (object id → plural for the link).
+  const rawFavorites = ctx.memberId
+    ? await db.favorite.findMany({
+        where: { workspaceId: ctx.workspaceId, memberId: ctx.memberId },
+        orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+        select: { id: true, label: true, objectId: true, recordId: true },
+      })
+    : []
+  const pluralById = new Map(objects.map((o) => [o.id, o.namePlural]))
+  const favorites = rawFavorites.flatMap((f) => {
+    const plural = f.objectId ? pluralById.get(f.objectId) : undefined
+    if (!plural) return []
+    const href = f.recordId
+      ? `/${lang}/${plural}/${f.recordId}`
+      : `/${lang}/${plural}`
+    return [{ id: f.id, label: f.label, href }]
+  })
+
+  const pa = ctx.isPlatformAdmin
   return (
     <PlatformShell
       lang={lang}
       workspaceName={workspace?.name ?? ctx.subdomain}
-      role={ctx.role ?? (ctx.isPlatformAdmin ? "PLATFORM_ADMIN" : "MEMBER")}
+      role={ctx.role ?? (pa ? "PLATFORM_ADMIN" : "MEMBER")}
       nav={dict.nav}
       objects={objects.map((o) => ({
         namePlural: o.namePlural,
         labelPlural: o.labelPlural,
+        labelSingular: o.labelSingular,
       }))}
+      canManageObjects={can(ctx.role, "manage_objects", pa)}
+      canManageMembers={can(ctx.role, "manage_members", pa)}
+      canEdit={can(ctx.role, "edit_records", pa)}
+      favorites={favorites}
     >
       {children}
     </PlatformShell>

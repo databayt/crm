@@ -5,10 +5,12 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "favorites": "Favorites",
     "companies": "Companies",
     "people": "People",
     "opportunities": "Opportunities",
     "pipeline": "Pipeline",
+    "members": "Members",
     "settings": "Settings"
   },
   "actions": {
