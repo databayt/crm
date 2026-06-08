@@ -18,6 +18,7 @@ describe("ddl builders", () => {
     expect(sql).toContain('"created_at" timestamptz NOT NULL DEFAULT now()')
     expect(sql).toContain('"updated_at" timestamptz NOT NULL DEFAULT now()')
     expect(sql).toContain('"deleted_at" timestamptz')
+    expect(sql).toContain('"position" double precision NOT NULL DEFAULT 0')
     expect(sql).toContain('"name" text NOT NULL')
     expect(sql).toContain('"employees" double precision')
   })
@@ -27,6 +28,8 @@ describe("ddl builders", () => {
       buildCreateTable("ws_acme", "company", [{ name: "id", type: "TEXT" }]),
     ).toThrow(/reserved/)
     expect(() => assertNotSystemColumn("created_at")).toThrow(/reserved/)
+    // `position` is now a system column too — a custom field can't reuse it.
+    expect(() => assertNotSystemColumn("position")).toThrow(/reserved/)
   })
 
   it("rejects unsafe identifiers (injection)", () => {

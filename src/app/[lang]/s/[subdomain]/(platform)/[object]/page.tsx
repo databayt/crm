@@ -11,6 +11,8 @@ export default async function ObjectPage({
     sort?: string
     dir?: string
     filters?: string
+    view?: string
+    group?: string
   }>
 }) {
   const { lang, object } = await params

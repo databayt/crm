@@ -6,11 +6,15 @@ import { qualified, quoteIdent } from "@/lib/sql"
 
 // Every materialized table carries these system columns automatically; they are
 // NOT part of FieldMetadata, and a field may never reuse one of these names.
+// `position` is a float carrying the manual sort order (kanban + grouped lists);
+// it is system-managed (written only via buildSetPosition / the insert subquery),
+// never user-writable, but IS orderable — so it lives here, not in the FieldMap.
 export const SYSTEM_COLUMNS = [
   "id",
   "created_at",
   "updated_at",
   "deleted_at",
+  "position",
 ] as const
 
 export interface FieldColumn {
@@ -42,6 +46,9 @@ export function buildCreateTable(
     `"created_at" timestamptz NOT NULL DEFAULT now()`,
     `"updated_at" timestamptz NOT NULL DEFAULT now()`,
     `"deleted_at" timestamptz`,
+    // Manual sort order. Default 0 is a fallback; buildInsert overrides it with
+    // MAX(position)+1 so a new row lands last (Twenty's "last" placement).
+    `"position" double precision NOT NULL DEFAULT 0`,
     ...fields.map(columnClause),
   ]
   return `CREATE TABLE IF NOT EXISTS ${qualified(pgSchema, table)} (\n  ${cols.join(

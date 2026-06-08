@@ -161,6 +161,17 @@ function filterClause(
   return `(${parts.join(logic)})`
 }
 
+// A literal SQL expression for the "last" position slot: MAX(position)+1 over
+// live rows (1 when the table is empty). Contains no user data, so it is safe to
+// inline in an INSERT VALUES list — the only place the position column is set on
+// create. Mirrors Twenty's default "last" placement for new records.
+function nextPositionExpr(pgSchema: string, table: string): string {
+  return `COALESCE((SELECT MAX("position") FROM ${qualified(
+    pgSchema,
+    table,
+  )} WHERE "deleted_at" IS NULL), 0) + 1`
+}
+
 export function buildInsert(
   pgSchema: string,
   table: string,
@@ -177,12 +188,11 @@ export function buildInsert(
     placeholders.push(`$${i++}`)
     values.push(coerceValue(fields[key], raw))
   }
-  if (cols.length === 0) {
-    return {
-      text: `INSERT INTO ${qualified(pgSchema, table)} DEFAULT VALUES RETURNING *`,
-      values: [],
-    }
-  }
+  // Always place the new row last. `position` is a system column (never in the
+  // FieldMap), so callers can't set it; we append it here as a parameter-free
+  // subquery expression. There is therefore always ≥1 column to insert.
+  cols.push('"position"')
+  placeholders.push(nextPositionExpr(pgSchema, table))
   return {
     text: `INSERT INTO ${qualified(pgSchema, table)} (${cols.join(
       ", ",
@@ -334,5 +344,156 @@ export function buildSelectByIds(
       table,
     )} WHERE "id"::text = ANY($1) AND "deleted_at" IS NULL`,
     values: [ids],
+  }
+}
+
+// ── Drag-to-reorder / kanban move ─────────────────────────────────────────────
+// Write a record's manual `position` (a client-computed fractional float) and,
+// optionally, the group field it was dropped into (e.g. an opportunity's stage).
+// `position` is bound as a value — the client computes the midpoint but the
+// server treats it as opaque data. The group column is validated against the
+// FieldMap and coerced exactly like any other write (an empty value → NULL, i.e.
+// Twenty's "No value" bucket).
+export function buildMoveRecord(
+  pgSchema: string,
+  table: string,
+  fields: FieldMap,
+  id: string,
+  position: number,
+  group?: { column: string; value: unknown },
+): SqlQuery {
+  const values: unknown[] = []
+  const sets: string[] = []
+  values.push(position)
+  sets.push(`"position" = $${values.length}`)
+  if (group && group.column in fields) {
+    values.push(coerceValue(fields[group.column], group.value))
+    sets.push(`${quoteIdent(group.column)} = $${values.length}`)
+  }
+  sets.push(`"updated_at" = now()`)
+  values.push(id)
+  return {
+    text: `UPDATE ${qualified(pgSchema, table)} SET ${sets.join(
+      ", ",
+    )} WHERE "id" = $${values.length} AND "deleted_at" IS NULL RETURNING *`,
+    values,
+  }
+}
+
+// ── Aggregates ────────────────────────────────────────────────────────────────
+// A faithful subset of Twenty's AggregateOperations. EARLIEST/LATEST are display
+// sugar that compile to MIN/MAX on date columns (exactly Twenty). COUNT is the
+// row count; COUNT_EMPTY/COUNT_NOT_EMPTY count NULLs vs non-NULLs of a column.
+export const AGGREGATE_OPS = [
+  "COUNT",
+  "COUNT_EMPTY",
+  "COUNT_NOT_EMPTY",
+  "SUM",
+  "AVG",
+  "MIN",
+  "MAX",
+  "EARLIEST",
+  "LATEST",
+] as const
+export type AggregateOp = (typeof AGGREGATE_OPS)[number]
+
+const AGG_NUMERIC = new Set(["NUMBER", "CURRENCY", "RATING"])
+const AGG_TEMPORAL = new Set(["DATE", "DATETIME"])
+
+// Which operations a field type may use — mirrors Twenty's field-type → operation
+// map intersected with our types. RELATION is count-only (Twenty's special case).
+export function availableAggregates(type: string): AggregateOp[] {
+  if (type === "RELATION") return ["COUNT"]
+  const base: AggregateOp[] = ["COUNT", "COUNT_EMPTY", "COUNT_NOT_EMPTY"]
+  if (AGG_NUMERIC.has(type)) return [...base, "SUM", "AVG", "MIN", "MAX"]
+  if (AGG_TEMPORAL.has(type)) return [...base, "EARLIEST", "LATEST"]
+  return base
+}
+
+// The op + column are SQL identifiers/functions, not bindable params; safety is
+// structural — the op comes from the AggregateOp enum and the column is quoted
+// only after being confirmed present in the FieldMap allowlist by buildAggregate.
+function aggregateExpr(op: AggregateOp, col: string): string {
+  const c = quoteIdent(col)
+  switch (op) {
+    case "COUNT":
+      return `count(*)::int`
+    case "COUNT_NOT_EMPTY":
+      return `count(${c})::int`
+    case "COUNT_EMPTY":
+      return `(count(*) - count(${c}))::int`
+    case "SUM":
+      return `sum(${c})`
+    case "AVG":
+      return `avg(${c})`
+    case "MIN":
+    case "EARLIEST":
+      return `min(${c})`
+    case "MAX":
+    case "LATEST":
+      return `max(${c})`
+  }
+}
+
+export interface AggregateSpec {
+  column: string
+  op: AggregateOp
+}
+export interface AcceptedAggregate extends AggregateSpec {
+  alias: string
+}
+export interface AggregateQuery extends SqlQuery {
+  aggregates: AcceptedAggregate[]
+  grouped: boolean
+}
+
+export interface AggregateOptions {
+  groupBy?: string
+  filters?: ListOptions["filters"]
+  search?: string
+}
+
+// Build one aggregate row (table footer) or one row per group (kanban column).
+// Every result row carries `group_count` (a plain row count) plus `agg_<i>` for
+// each accepted (column, op) — pairs whose op isn't valid for the column's type
+// are silently dropped, the same skip-don't-throw policy as filterClause.
+export function buildAggregate(
+  pgSchema: string,
+  table: string,
+  fields: FieldMap,
+  aggs: AggregateSpec[],
+  opts: AggregateOptions = {},
+): AggregateQuery {
+  const values: unknown[] = []
+  const accepted: AcceptedAggregate[] = []
+  const selects: string[] = [`count(*)::int AS group_count`]
+  for (const a of aggs) {
+    if (!(a.column in fields)) continue
+    if (!availableAggregates(fields[a.column]).includes(a.op)) continue
+    const alias = `agg_${accepted.length}`
+    selects.push(`${aggregateExpr(a.op, a.column)} AS ${alias}`)
+    accepted.push({ ...a, alias })
+  }
+
+  const where = ['"deleted_at" IS NULL']
+  const fclause = filterClause(fields, normalizeFilters(opts.filters), values)
+  if (fclause) where.push(fclause)
+  const sclause = searchClause(fields, opts.search, values)
+  if (sclause) where.push(sclause)
+
+  // Only a real business column may key the groups (the kanban/group-by field).
+  const grp =
+    opts.groupBy && opts.groupBy in fields ? quoteIdent(opts.groupBy) : null
+  const groupSelect = grp ? `${grp} AS group_value, ` : ""
+  const groupClause = grp ? ` GROUP BY ${grp}` : ""
+
+  return {
+    text: `SELECT ${groupSelect}${selects.join(", ")} FROM ${qualified(
+      pgSchema,
+      table,
+    )} WHERE ${where.join(" AND ")}${groupClause}`,
+    values,
+    aggregates: accepted,
+    grouped: Boolean(grp),
   }
 }

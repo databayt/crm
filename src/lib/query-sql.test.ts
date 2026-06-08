@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  availableAggregates,
+  buildAggregate,
   buildBulkSoftDelete,
   buildCount,
   buildGetById,
   buildInsert,
   buildList,
+  buildMoveRecord,
   buildSelectByIds,
   buildSoftDelete,
   buildUpdate,
@@ -15,21 +18,27 @@ import {
 const FM: FieldMap = { name: "TEXT", employees: "NUMBER", city: "TEXT" }
 
 describe("query-sql builders", () => {
-  it("inserts only known fields, parameterized + coerced", () => {
+  it("inserts only known fields, parameterized + coerced, last position", () => {
     const q = buildInsert("ws_acme", "company", FM, {
       name: "Acme",
       employees: "10",
       bogus: "ignored",
     })
     expect(q.text).toBe(
-      'INSERT INTO "ws_acme"."company" ("name", "employees") VALUES ($1, $2) RETURNING *',
+      'INSERT INTO "ws_acme"."company" ("name", "employees", "position") ' +
+        'VALUES ($1, $2, COALESCE((SELECT MAX("position") FROM "ws_acme"."company" ' +
+        'WHERE "deleted_at" IS NULL), 0) + 1) RETURNING *',
     )
     expect(q.values).toEqual(["Acme", 10])
   })
 
-  it("falls back to DEFAULT VALUES when no known fields are present", () => {
+  it("still inserts (position only) when no known business fields are present", () => {
     const q = buildInsert("ws_acme", "company", FM, { bogus: "x" })
-    expect(q.text).toContain("DEFAULT VALUES RETURNING *")
+    expect(q.text).toBe(
+      'INSERT INTO "ws_acme"."company" ("position") ' +
+        'VALUES (COALESCE((SELECT MAX("position") FROM "ws_acme"."company" ' +
+        'WHERE "deleted_at" IS NULL), 0) + 1) RETURNING *',
+    )
     expect(q.values).toEqual([])
   })
 
@@ -160,5 +169,113 @@ describe("query-sql builders", () => {
     expect(buildSoftDelete("ws_acme", "company", "x").text).toContain(
       'SET "deleted_at" = now()',
     )
+  })
+
+  it("orders by the position system column without it being in the FieldMap", () => {
+    const q = buildList("ws_acme", "opportunity", FM, {
+      orderBy: { column: "position", dir: "asc" },
+    })
+    expect(q.text).toContain('ORDER BY "position" ASC')
+  })
+})
+
+describe("buildMoveRecord", () => {
+  const FM: FieldMap = { name: "TEXT", stage: "SELECT" }
+
+  it("sets position alone when no group is given", () => {
+    const q = buildMoveRecord("ws_acme", "opportunity", FM, "abc", 1.5)
+    expect(q.text).toBe(
+      'UPDATE "ws_acme"."opportunity" SET "position" = $1, "updated_at" = now() ' +
+        'WHERE "id" = $2 AND "deleted_at" IS NULL RETURNING *',
+    )
+    expect(q.values).toEqual([1.5, "abc"])
+  })
+
+  it("sets the group column + position when crossing columns (validated/coerced)", () => {
+    const q = buildMoveRecord("ws_acme", "opportunity", FM, "abc", 2, {
+      column: "stage",
+      value: "WON",
+    })
+    expect(q.text).toBe(
+      'UPDATE "ws_acme"."opportunity" SET "position" = $1, "stage" = $2, ' +
+        '"updated_at" = now() WHERE "id" = $3 AND "deleted_at" IS NULL RETURNING *',
+    )
+    expect(q.values).toEqual([2, "WON", "abc"])
+  })
+
+  it("coerces an empty group value to NULL (the No-value bucket)", () => {
+    const q = buildMoveRecord("ws_acme", "opportunity", FM, "abc", 3, {
+      column: "stage",
+      value: "",
+    })
+    expect(q.values).toEqual([3, null, "abc"])
+  })
+
+  it("ignores a group column outside the FieldMap allowlist", () => {
+    const q = buildMoveRecord("ws_acme", "opportunity", FM, "abc", 3, {
+      column: "evil; DROP",
+      value: "x",
+    })
+    expect(q.text).not.toContain("evil")
+    expect(q.values).toEqual([3, "abc"])
+  })
+})
+
+describe("buildAggregate", () => {
+  const FM: FieldMap = {
+    name: "TEXT",
+    amount: "CURRENCY",
+    stage: "SELECT",
+    company_id: "RELATION",
+  }
+
+  it("gates operations by field type", () => {
+    expect(availableAggregates("CURRENCY")).toContain("SUM")
+    expect(availableAggregates("TEXT")).not.toContain("SUM")
+    expect(availableAggregates("DATE")).toContain("EARLIEST")
+    expect(availableAggregates("RELATION")).toEqual(["COUNT"])
+  })
+
+  it("groups by a select column with a per-bucket count + sum", () => {
+    const q = buildAggregate(
+      "ws_acme",
+      "opportunity",
+      FM,
+      [{ column: "amount", op: "SUM" }],
+      { groupBy: "stage" },
+    )
+    expect(q.text).toBe(
+      'SELECT "stage" AS group_value, count(*)::int AS group_count, ' +
+        'sum("amount") AS agg_0 FROM "ws_acme"."opportunity" ' +
+        'WHERE "deleted_at" IS NULL GROUP BY "stage"',
+    )
+    expect(q.grouped).toBe(true)
+    expect(q.aggregates).toEqual([
+      { column: "amount", op: "SUM", alias: "agg_0" },
+    ])
+  })
+
+  it("drops aggregates whose op is invalid for the column type", () => {
+    const q = buildAggregate("ws_acme", "opportunity", FM, [
+      { column: "amount", op: "SUM" }, // ok
+      { column: "name", op: "SUM" }, // dropped (SUM not valid on TEXT)
+      { column: "evil", op: "COUNT" }, // dropped (not in FieldMap)
+    ])
+    expect(q.aggregates).toEqual([
+      { column: "amount", op: "SUM", alias: "agg_0" },
+    ])
+    expect(q.grouped).toBe(false)
+    expect(q.text).toContain("count(*)::int AS group_count")
+    expect(q.text).not.toContain("GROUP BY")
+  })
+
+  it("threads search + filters into the aggregate WHERE", () => {
+    const q = buildAggregate("ws_acme", "opportunity", FM, [], {
+      filters: [{ column: "stage", value: "WON" }],
+      search: "Ac",
+    })
+    expect(q.text).toContain('"stage" = $1')
+    expect(q.text).toContain("ILIKE")
+    expect(q.values).toEqual(["WON", "%Ac%"])
   })
 })

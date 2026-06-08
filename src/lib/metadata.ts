@@ -120,3 +120,10 @@ export function selectChoices(field: LoadedField): string[] {
   const opts = field.options as { choices?: string[] } | null
   return opts?.choices ?? []
 }
+
+// Which fields a list/board may be grouped by. Faithful to Twenty: single SELECT
+// only (bounded, single-valued buckets) — never MULTI_SELECT, RELATION, BOOLEAN,
+// RATING, or free TEXT — and the field must actually define choices.
+export function isGroupable(field: LoadedField): boolean {
+  return field.type === "SELECT" && selectChoices(field).length > 0
+}
