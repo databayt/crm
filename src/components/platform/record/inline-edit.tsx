@@ -8,6 +8,14 @@ import { toast } from "sonner"
 import { toInputString } from "@/lib/field-types"
 import { updateField } from "@/components/platform/record/actions"
 import { FieldCell } from "@/components/platform/record/field-cell"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 export interface InlineField {
   name: string
@@ -24,9 +32,6 @@ interface RelationOption {
 }
 
 const SELECT_LIKE = new Set(["SELECT", "BOOLEAN", "RELATION"])
-
-const controlClass =
-  "border-input dark:bg-input/30 h-8 w-full rounded-md border bg-transparent px-2 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
 
 function inputTypeFor(type: string): string {
   switch (type) {
@@ -132,37 +137,43 @@ export function InlineEdit({
             }))
           : (field.choices ?? []).map((c) => ({ value: c, label: c }))
     return (
-      <select
-        autoFocus
+      <Select
         disabled={pending}
-        className={controlClass}
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          commit(e.target.value)
+        defaultOpen={true}
+        value={draft || "__empty__"}
+        onValueChange={(val) => {
+          const nextVal = val === "__empty__" ? "" : val
+          setDraft(nextVal)
+          commit(nextVal)
         }}
-        onBlur={() => {
-          if (!pending) setEditing(false)
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !pending) {
+            setEditing(false)
+          }
         }}
       >
-        <option value="">—</option>
-        {opts.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+        <SelectTrigger className="h-8 w-full bg-card">
+          <SelectValue placeholder="—" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__empty__">—</SelectItem>
+          {opts.map((o) => (
+            <SelectItem key={o.value} value={o.value}>
+              {o.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     )
   }
 
   const inputType = inputTypeFor(field.type)
   return (
-    <input
+    <Input
       autoFocus
       disabled={pending}
       type={inputType}
       step={inputType === "number" ? "any" : undefined}
-      className={controlClass}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onKeyDown={(e) => {

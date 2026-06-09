@@ -61,6 +61,7 @@ export default async function PlatformLayout({
         namePlural: o.namePlural,
         labelPlural: o.labelPlural,
         labelSingular: o.labelSingular,
+        icon: o.icon,
       }))}
       canManageObjects={can(ctx.role, "manage_objects", pa)}
       canManageMembers={can(ctx.role, "manage_members", pa)}

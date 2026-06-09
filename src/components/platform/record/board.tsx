@@ -1,8 +1,9 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +27,8 @@ import { toast } from "sonner"
 
 import { moveRecord } from "@/components/platform/record/board-actions"
 import { computeDropPosition } from "@/components/platform/record/position"
+import { createRecord } from "@/components/platform/record/actions"
+import { Plus, Loader2 } from "lucide-react"
 
 export interface BoardCard {
   id: string
@@ -94,17 +97,54 @@ function Column({
   column,
   cards,
   basePath,
+  objectName,
+  groupField,
+  displayField,
 }: {
   column: BoardColumn
   cards: BoardCard[]
   basePath: string
+  objectName: string
+  groupField: string
+  displayField: string
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${COL}${column.value}` })
+  const [adding, setAdding] = useState(false)
+  const [value, setValue] = useState("")
+  const [pending, start] = useTransition()
+  const router = useRouter()
+
+  const handleAdd = () => {
+    const trimmed = value.trim()
+    if (!trimmed) {
+      setAdding(false)
+      return
+    }
+    start(async () => {
+      const res = await createRecord(objectName, {
+        [displayField]: trimmed,
+        [groupField]: column.value === "" ? null : column.value,
+      })
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success("Card created")
+        setValue("")
+        setAdding(false)
+        router.refresh()
+      }
+    })
+  }
+
   return (
     <div className="flex w-72 shrink-0 flex-col">
-      <div className="mb-2 flex items-baseline justify-between px-1">
-        <span className="text-sm font-medium">{column.label}</span>
-        <span className="text-xs text-muted-foreground">{column.count}</span>
+      <div className="mb-3 flex items-baseline justify-between px-1.5">
+        <span className="text-sm font-semibold text-foreground/80">
+          {column.label}
+        </span>
+        <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs font-semibold text-muted-foreground">
+          {column.count}
+        </span>
       </div>
       <SortableContext
         items={cards.map((c) => c.id)}
@@ -112,20 +152,78 @@ function Column({
       >
         <div
           ref={setNodeRef}
-          className={`flex min-h-32 flex-1 flex-col gap-2 rounded-lg border border-dashed p-2 transition-colors ${
-            isOver ? "border-primary/40 bg-muted/50" : ""
+          className={`flex min-h-[300px] flex-1 flex-col gap-2 rounded-xl border border-dashed border-border/80 bg-muted/20 p-2.5 transition-colors ${
+            isOver ? "border-primary/40 bg-muted/60" : ""
           }`}
         >
           {cards.map((c) => (
             <Card key={c.id} card={c} basePath={basePath} />
           ))}
+
+          {adding && (
+            <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-card p-3 shadow-xs">
+              <input
+                type="text"
+                autoFocus
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAdd()
+                  if (e.key === "Escape") {
+                    setAdding(false)
+                    setValue("")
+                  }
+                }}
+                disabled={pending}
+                placeholder="Enter title..."
+                className="w-full bg-transparent text-sm font-medium text-foreground outline-hidden placeholder:text-muted-foreground/60"
+              />
+              <div className="mt-1 flex items-center justify-between">
+                <Button
+                  size="xs"
+                  onClick={handleAdd}
+                  disabled={pending || !value.trim()}
+                  className="h-6.5 px-2.5 text-xs font-semibold shadow-xs"
+                >
+                  {pending ? (
+                    <Loader2 className="mr-1 size-3 animate-spin" />
+                  ) : null}
+                  Add
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdding(false)
+                    setValue("")
+                  }}
+                  disabled={pending}
+                  className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </SortableContext>
-      {column.metric ? (
-        <div className="mt-2 px-1 text-end text-xs font-medium text-muted-foreground">
-          {column.metric}
-        </div>
-      ) : null}
+      <div className="mt-2.5 flex items-center justify-between px-1.5">
+        {!adding ? (
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="flex items-center gap-1 text-xs font-semibold text-muted-foreground transition-colors hover:cursor-pointer hover:text-foreground"
+          >
+            <Plus className="size-3.5" /> Add card
+          </button>
+        ) : (
+          <span />
+        )}
+        {column.metric ? (
+          <div className="rounded-md border border-border/30 bg-muted/50 px-2 py-0.5 text-end text-xs font-semibold text-muted-foreground/95">
+            {column.metric}
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -136,12 +234,14 @@ export function RecordBoard({
   groupField,
   columns,
   cardsByGroup,
+  displayField,
 }: {
   basePath: string
   objectName: string
   groupField: string
   columns: BoardColumn[]
   cardsByGroup: Record<string, BoardCard[]>
+  displayField: string
 }) {
   const router = useRouter()
   const [board, setBoard] = useState(cardsByGroup)
@@ -280,6 +380,9 @@ export function RecordBoard({
             column={col}
             cards={board[col.value] ?? []}
             basePath={basePath}
+            objectName={objectName}
+            groupField={groupField}
+            displayField={displayField}
           />
         ))}
       </div>

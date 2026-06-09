@@ -1,5 +1,20 @@
+"use client"
+
 import Link from "next/link"
-import { Star } from "lucide-react"
+import { usePathname } from "next/navigation"
+import {
+  LayoutDashboard,
+  KanbanSquare,
+  Users,
+  Settings,
+  Star,
+  Building2,
+  User,
+  Target,
+  Activity,
+  FileText,
+  LogOut,
+} from "lucide-react"
 
 import { logout } from "@/components/auth/actions"
 import { CommandMenu } from "@/components/platform/command-menu/command-menu"
@@ -9,12 +24,39 @@ export interface NavObject {
   namePlural: string
   labelPlural: string
   labelSingular: string
+  icon?: string | null
 }
 
 export interface FavoriteLink {
   id: string
   label: string
   href: string
+}
+
+function getIcon(name?: string | null) {
+  switch (name) {
+    case "building-2":
+    case "company":
+      return Building2
+    case "user":
+    case "person":
+      return User
+    case "target":
+    case "opportunity":
+      return Target
+    case "activity":
+      return Activity
+    case "settings":
+      return Settings
+    case "members":
+      return Users
+    case "pipeline":
+      return KanbanSquare
+    case "dashboard":
+      return LayoutDashboard
+    default:
+      return FileText
+  }
 }
 
 export function PlatformShell({
@@ -40,17 +82,50 @@ export function PlatformShell({
   favorites: FavoriteLink[]
   children: React.ReactNode
 }) {
-  const linkClass =
-    "hover:bg-sidebar-accent rounded-md px-2 py-1.5 text-sm transition-colors"
+  const pathname = usePathname()
+
+  // Generate initials for the workspace avatar badge
+  const initials = workspaceName
+    ? workspaceName
+        .split(" ")
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase()
+    : "WS"
+
+  const getLinkClass = (href: string) => {
+    const isActive = pathname === href || pathname?.startsWith(`${href}/`)
+    return `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${
+      isActive
+        ? "bg-primary text-primary-foreground shadow-xs"
+        : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+    }`
+  }
+
+  const sectionHeaderClass =
+    "px-3 mt-4 mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70"
 
   return (
-    <div className="flex min-h-svh">
-      <aside className="flex w-60 shrink-0 flex-col gap-1 border-e bg-sidebar p-3 text-sidebar-foreground">
-        <div className="px-2 py-3">
-          <div className="truncate font-semibold">{workspaceName}</div>
-          <div className="text-xs text-muted-foreground">{role}</div>
+    <div className="flex min-h-svh bg-background">
+      <aside className="flex w-64 shrink-0 flex-col gap-1 border-e border-border/60 bg-sidebar p-4 text-sidebar-foreground">
+        {/* Workspace Banner */}
+        <div className="mb-2 flex items-center gap-3 px-1 py-3">
+          <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-linear-to-br from-indigo-500 to-purple-600 font-semibold text-white shadow-sm">
+            {initials}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="truncate font-semibold text-foreground/90">
+              {workspaceName}
+            </div>
+            <div className="truncate text-xs font-medium tracking-wider text-muted-foreground uppercase">
+              {role.replace("_", " ")}
+            </div>
+          </div>
         </div>
-        <div className="mb-2">
+
+        {/* Command Search */}
+        <div className="mb-4">
           <CommandMenu
             lang={lang}
             objects={objects}
@@ -59,64 +134,112 @@ export function PlatformShell({
             canManageMembers={canManageMembers}
           />
         </div>
-        <nav className="flex flex-col gap-0.5">
-          <Link href={`/${lang}`} className={linkClass}>
-            {nav.dashboard ?? "Dashboard"}
+
+        {/* Navigation */}
+        <nav className="flex flex-col gap-1">
+          {/* Workspace Section */}
+          <div className={sectionHeaderClass}>
+            {nav.workspace ?? "Workspace"}
+          </div>
+
+          <Link href={`/${lang}`} className={getLinkClass(`/${lang}`)}>
+            <LayoutDashboard className="size-4 shrink-0" />
+            <span>{nav.dashboard ?? "Dashboard"}</span>
           </Link>
 
-          {favorites.length > 0 ? (
-            <div className="mt-2 mb-1">
-              <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">
+          <Link
+            href={`/${lang}/pipeline`}
+            className={getLinkClass(`/${lang}/pipeline`)}
+          >
+            <KanbanSquare className="size-4 shrink-0" />
+            <span>{nav.pipeline ?? "Pipeline"}</span>
+          </Link>
+
+          {/* Favorites Section */}
+          {favorites.length > 0 && (
+            <>
+              <div className={sectionHeaderClass}>
                 {nav.favorites ?? "Favorites"}
               </div>
               {favorites.map((f) => (
-                <Link
-                  key={f.id}
-                  href={f.href}
-                  className={`${linkClass} flex items-center gap-2`}
-                >
-                  <Star className="size-3.5 shrink-0 fill-yellow-400 text-yellow-400" />
+                <Link key={f.id} href={f.href} className={getLinkClass(f.href)}>
+                  <Star className="size-4 shrink-0 fill-yellow-400 text-yellow-400" />
                   <span className="truncate">{f.label}</span>
                 </Link>
               ))}
-            </div>
-          ) : null}
+            </>
+          )}
 
-          {objects.map((o) => (
-            <Link
-              key={o.namePlural}
-              href={`/${lang}/${o.namePlural}`}
-              className={linkClass}
-            >
-              {nav[o.namePlural] ?? o.labelPlural}
-            </Link>
-          ))}
-          <Link href={`/${lang}/pipeline`} className={linkClass}>
-            {nav.pipeline ?? "Pipeline"}
-          </Link>
-          {canManageMembers ? (
-            <Link href={`/${lang}/settings/members`} className={linkClass}>
-              {nav.members ?? "Members"}
-            </Link>
-          ) : null}
-          {canManageObjects ? (
-            <Link href={`/${lang}/settings`} className={linkClass}>
-              {nav.settings ?? "Settings"}
-            </Link>
-          ) : null}
+          {/* CRM Objects Section */}
+          <div className={sectionHeaderClass}>{nav.objects ?? "Objects"}</div>
+
+          {objects.map((o) => {
+            const IconComponent = getIcon(o.icon)
+            const href = `/${lang}/${o.namePlural}`
+            return (
+              <Link
+                key={o.namePlural}
+                href={href}
+                className={getLinkClass(href)}
+              >
+                <IconComponent className="size-4 shrink-0" />
+                <span className="truncate">
+                  {nav[o.namePlural] ?? o.labelPlural}
+                </span>
+              </Link>
+            )
+          })}
+
+          {/* Settings Section */}
+          {(canManageMembers || canManageObjects) && (
+            <>
+              <div className={sectionHeaderClass}>
+                {nav.settings ?? "Settings"}
+              </div>
+
+              {canManageMembers && (
+                <Link
+                  href={`/${lang}/settings/members`}
+                  className={getLinkClass(`/${lang}/settings/members`)}
+                >
+                  <Users className="size-4 shrink-0" />
+                  <span>{nav.members ?? "Members"}</span>
+                </Link>
+              )}
+
+              {canManageObjects && (
+                <Link
+                  href={`/${lang}/settings`}
+                  className={getLinkClass(`/${lang}/settings`)}
+                >
+                  <Settings className="size-4 shrink-0" />
+                  <span>{nav.settings ?? "Settings"}</span>
+                </Link>
+              )}
+            </>
+          )}
         </nav>
-        <form action={logout} className="mt-auto">
-          <Button
-            type="submit"
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start"
-          >
-            Sign out
-          </Button>
-        </form>
+
+        {/* Footer actions */}
+        <div className="mt-auto border-t border-border/50 pt-4">
+          <form action={logout}>
+            <Button
+              type="submit"
+              variant="ghost"
+              size="sm"
+              className="h-9 w-full justify-start gap-2.5 rounded-lg px-3 py-2 text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+            >
+              <LogOut className="size-4 shrink-0" />
+              <span>{nav.signout ?? "Sign out"}</span>
+            </Button>
+          </form>
+        </div>
       </aside>
-      <main className="min-w-0 flex-1">{children}</main>
+
+      {/* Content Area */}
+      <main className="min-w-0 flex-1 overflow-y-auto bg-background/50">
+        {children}
+      </main>
     </div>
   )
 }

@@ -177,6 +177,7 @@ export async function BoardContent({
         groupField={groupField.name}
         columns={columns}
         cardsByGroup={cardsByGroup}
+        displayField={object.displayField}
       />
     </div>
   )
